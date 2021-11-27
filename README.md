@@ -28,6 +28,6 @@ brew install gdal
 
 Currently gdal is being used to rasterize vector data, using `gdal_rasterize` from the command line. Example:
 ```
-gdal_rasterize data/osm/rwanda/roads/roads_with_value.shp data/osm/rwanda/roads/osm_roads.tif -tr 0.0005 0.0005 -a fclass_val
+gdal_rasterize data/osm/rwanda/roads/gis_osm_roads_free_1_with_tag_value.shp data/osm/rwanda/roads/gis_osm_roads_free_1_with_tag_value.tif -tr 0.0005 0.0005 -a fclass_val
 ```
 The documentation on this service is found [here](https://gdal.org/programs/gdal_rasterize.html).
