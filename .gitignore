@@ -130,3 +130,6 @@ dmypy.json
 
 # MacOS stuff
 .DS_Store
+
+# OSM data (too big)
+data/osm/
