@@ -26,7 +26,7 @@ class TagMap(Enum):
         file="data/osm/{country}/roads/gis_osm_roads_free_1.shp",
     )
     WATERWAYS = DataSourceParameters(
-        default=-1,
+        default=4,
         tag_to_value_map={"canal": 0, "drain": 1, "stream": 2, "river": 3},
         file="data/osm/{country}/waterways/gis_osm_waterways_free_1.shp",
     )
