@@ -38,7 +38,7 @@ def process_population_data(population_data):
 
 class BridgesData(Dataset):
     # TODO: Ensure data is in consistent UTM coordinate system
-    def __init__(self, tile_size=0.1, country="rwanda", inputs=()):
+    def __init__(self, tile_size=0.01, country="rwanda", inputs=()):
         """
         `inputs` defines desired data to train on, currently accepting:
             - roads (OSM roads data)
