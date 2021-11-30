@@ -8,6 +8,11 @@ Please feel free to update the requirements.txt if you are using additional pack
 conda create --name=b2p python=3.7
 conda activate b2p
 pip install -r requirements.txt
+# choose one of the two installation
+# with cuda
+# pip install torch==1.10.0+cu113 torchvision==0.11.1+cu113 torchaudio==0.10.0+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
+# without cuda
+# pip install torch==1.10.0+cpu torchvision==0.11.1+cpu torchaudio==0.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 ```
 
 Download [git-lfs](https://github.com/git-lfs/git-lfs) for managing large files with Git.
@@ -31,3 +36,10 @@ Currently gdal is being used to rasterize vector data, using `gdal_rasterize` fr
 gdal_rasterize data/osm/rwanda/roads/gis_osm_roads_free_1_with_tag_value.shp data/osm/rwanda/roads/gis_osm_roads_free_1_with_tag_value.tif -tr 0.0005 0.0005 -a fclass_val
 ```
 The documentation on this service is found [here](https://gdal.org/programs/gdal_rasterize.html).
+
+## Model training
+
+```
+python -m torch.distributed.launch --master_addr="127.0.0.2" --master_port=8798 --nproc_per_node=4 train.py
+
+```
