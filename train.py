@@ -2,6 +2,7 @@ import argparse
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.backends.cudnn as cudnn
 
 from src import models
@@ -25,8 +26,44 @@ def parse_options() -> argparse.Namespace:
                               "https://pytorch.org/docs/stable/distributed.html"))
     parser.add_argument("--local_rank", default=0, type=int,
                         help="Please ignore and do not set this argument.")
+
+    # log during training
+    parser.add_argument("--log_interval", default=None, type=int,
+                        help=("Whether to log every `log_interval`-th "
+                              "iterations."))
+
+    # training
+    parser.add_argument("--epochs", default=300, type=int,
+                        help="Training epochs.")
+
+    # optimizer
+    parser.add_argument("--lr", default=1e-4, type=float,
+                        help="Adam optimizer learning rate.")
     args = parser.parse_args()
     return args
+
+
+def train(model: nn.Module, criterion: nn.modules.loss._Loss,
+          dataloader, optimizer, epoch: int,
+          cuda: bool = True, log_interval: int = None):
+
+    for i, (inputs, labels) in enumerate(dataloader):
+        if cuda:
+            inputs = inputs.cuda()
+            labels = labels.cuda()
+
+        if log_interval is not None and i % log_interval == 0:
+            pass
+    print("==> Train")
+
+
+def test(model: nn.Module, dataloader, epoch: int):
+    print("==> Test")
+
+
+def run(model: nn.Module, dataloaders, optimizer, epochs: int,
+        log_interval: int = None):
+    print("==> Start training")
 
 
 if __name__ == "__main__":
@@ -42,9 +79,20 @@ if __name__ == "__main__":
     ddp.fix_random_seeds(args.seed, cuda=cuda)
 
     cudnn.benchmark = True
-
+    # model
     model = models.BridgeResnet(args.in_channels, model_name=args.model)
+    # loss
+    criterion = nn.CrossEntropyLoss(reduction="none")
+    # ddp, cuda
     if ddp.has_batchnorms(model) and cuda:
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     if cuda:
         model = model.cuda()
+        criterion = criterion.cuda()
+
+    # TODO: get dataloaders (train, val, test)
+    dataloaders = None
+
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    run(model, criterion, dataloaders, optimizer, args.epochs,
+        log_interval=args.log_interval)
