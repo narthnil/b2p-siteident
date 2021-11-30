@@ -133,3 +133,5 @@ dmypy.json
 
 # OSM data (too big)
 data/osm/
+# Population tifs
+data/population/
