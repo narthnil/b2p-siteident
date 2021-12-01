@@ -6,3 +6,4 @@ rasterio
 jupyter
 geopandas
 geographiclib
+tqdm
