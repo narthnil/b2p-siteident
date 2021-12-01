@@ -12,39 +12,39 @@ from torch.utils.data import Dataset
 TRAIN_METADATA = {
     "Rwanda": {
         "population": {
-            "fp": ("../data/population/"
+            "fp": ("./data/population/"
                    "Rwanda_population_data_2020_UNadj_constrained.tif"),
             "raster_channels": [1]
         },
         "osm_imgs": {
-            "fp": "../data/osm/imgs/rwanda_osm_nolab_1-50000_4326.tiff",
+            "fp": "./data/osm/imgs/rwanda_osm_nolab_1-50000_4326.tiff",
             "raster_channels": [1, 2, 3]
         },
         "elevation": {
-            "fp": "../data/slope_elevation/elevation_rwanda.tif",
+            "fp": "./data/slope_elevation/elevation_rwanda.tif",
             "raster_channels": [2]
         },
         "slope": {
-            "fp": "../data/slope_elevation/slope_rwanda.tif",
+            "fp": "./data/slope_elevation/slope_rwanda.tif",
             "raster_channels": [2]
         }
     },
     "Uganda": {
         "population": {
-            "fp": ("../data/population/"
+            "fp": ("./data/population/"
                    "Uganda_population_data_2020_UNadj_constrained.tif"),
             "raster_channels": [1]
         },
         "osm_imgs": {
-            "fp": "../data/osm/imgs/uganda_train_osm_nolab_1-50000_4326.tiff",
+            "fp": "./data/osm/imgs/uganda_train_osm_nolab_1-50000_4326.tiff",
             "raster_channels": [1, 2, 3]
         },
         "elevation": {
-            "fp": "../data/slope_elevation/elevation_uganda.tif",
+            "fp": "./data/slope_elevation/elevation_uganda.tif",
             "raster_channels": [2]
         },
         "slope": {
-            "fp": "../data/slope_elevation/slope_uganda.tif",
+            "fp": "./data/slope_elevation/slope_uganda.tif",
             "raster_channels": [2]
         }
     },
@@ -54,9 +54,9 @@ OUTPUT_SIZE = {300: (12, 12), 600: (24, 24), 1200: (48, 48)}
 DATA_ORDER = ["population", "osm_imgs", "elevation", "slope"]
 
 TRAINING_DATA = {
-    300: "../data/ground_truth/training_data_300.csv",
-    600: "../data/ground_truth/training_data_600.csv",
-    1200: "../data/ground_truth/training_data_1200.csv"
+    300: "./data/ground_truth/training_data_300.csv",
+    600: "./data/ground_truth/training_data_600.csv",
+    1200: "./data/ground_truth/training_data_1200.csv"
 }
 DTYPE = {
     "Opportunity ID": str,
