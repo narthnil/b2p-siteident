@@ -132,6 +132,12 @@ dmypy.json
 .DS_Store
 
 # OSM data (too big)
-data/osm/
-# Population tifs
-data/population/
+*.tif
+*.tiff
+*.dbf
+*.prj
+*.shp
+*.shx
+*.geojson
+data/*/*.json
+data/*/*.csv

@@ -6,7 +6,7 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 
 from src import models
-from src.utils import ddp
+from src.utils import dist
 
 
 def parse_options() -> argparse.Namespace:
@@ -61,22 +61,22 @@ def test(model: nn.Module, dataloader, epoch: int):
     print("==> Test")
 
 
-def run(model: nn.Module, dataloaders, optimizer, epochs: int,
-        log_interval: int = None):
+def run(model: nn.Module, criterion: nn.Module, dataloaders, optimizer,
+        epochs: int, log_interval: int = None):
     print("==> Start training")
 
 
 if __name__ == "__main__":
     args = parse_options()
-    print("git:\n  {}\n".format(ddp.get_sha()))
+    print("git:\n  {}\n".format(dist.get_sha()))
     print("Args:")
     print("\n".join("%s: %s" % (k, str(v))
           for k, v in sorted(dict(vars(args)).items())))
     # init distributed mode
     cuda = torch.cuda.is_available()
     if cuda:
-        ddp.init_distributed_mode(args)
-    ddp.fix_random_seeds(args.seed, cuda=cuda)
+        dist.init_distributed_mode(args)
+    dist.fix_random_seeds(args.seed, cuda=cuda)
 
     cudnn.benchmark = True
     # model
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # loss
     criterion = nn.CrossEntropyLoss(reduction="none")
     # ddp, cuda
-    if ddp.has_batchnorms(model) and cuda:
+    if dist.has_batchnorms(model) and cuda:
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
     if cuda:
         model = model.cuda()
