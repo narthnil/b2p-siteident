@@ -7,3 +7,6 @@ jupyter
 geopandas
 geographiclib
 tqdm
+torch
+torchvision
+rtree
