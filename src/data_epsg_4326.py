@@ -175,7 +175,7 @@ class BridgeDataset(Dataset):
             max_num_tries, num_tries = 5, 0
             while num_tries < max_num_tries or valid_point is False:
                 num_tries += 1
-                lon, lat = self.sample_points_in_polygon(entry.geometry)
+                lon, lat = self.sample_points_in_polygon(entry.geometry)[0]
                 area_coords = get_square_area(
                     lon, lat, square_length=self.tile_size)
                 left = min([ac[0] for ac in area_coords])
