@@ -1,12 +1,14 @@
 import numpy as np
-import pandas as pd
+import geopandas as gpd
 import rasterio
 
 from rasterio import windows
+from typing import Iterator
 
 from geographiclib.geodesic import Geodesic
+from shapely.geometry import Point
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 
 
 TRAIN_METADATA = {
@@ -54,21 +56,9 @@ OUTPUT_SIZE = {300: (12, 12), 600: (24, 24), 1200: (48, 48)}
 DATA_ORDER = ["population", "osm_imgs", "elevation", "slope"]
 
 TRAINING_DATA = {
-    300: "./data/ground_truth/training_data_300.csv",
-    600: "./data/ground_truth/training_data_600.csv",
-    1200: "./data/ground_truth/training_data_1200.csv"
-}
-DTYPE = {
-    "Opportunity ID": str,
-    "GPS (Latitude)": float,
-    "GPS (Longitude)": float,
-    "Country": str,
-    "Split": str,
-    "left": float,
-    "right": float,
-    "bottom": float,
-    "top": float,
-    "pos_neg": str
+    300: "./data/ground_truth/v2/training_data_300.csv",
+    600: "./data/ground_truth/v2/training_data_600.csv",
+    1200: "./data/ground_truth/v2/training_data_1200.csv"
 }
 
 
@@ -107,10 +97,9 @@ class BridgeDataset(Dataset):
         assert tile_size in [300, 600, 1200], "Tile size not known"
 
         self.tile_size = tile_size
-        self.training_data = pd.read_csv(
-            TRAINING_DATA[tile_size],
-            dtype=DTYPE
-        )
+        with open("./data/ground_truth/v2/train_{}.geojson".format(
+                tile_size)) as f:
+            self.train_gdf = gpd.read_file(f)
         self.data_rasters = {}
         for country, data_modalities in TRAIN_METADATA.items():
             if country not in self.data_rasters:
@@ -119,18 +108,17 @@ class BridgeDataset(Dataset):
                 self.data_rasters[country][data_type] = rasterio.open(
                     data["fp"])
 
-        self.geod = Geodesic.WGS84
         self.use_rnd_pos = use_rnd_pos
         self.transform = transform
 
-    def shift_coords(self, lon, lat):
+    @staticmethod
+    def shift_coords(lon, lat, tile_size=300):
+        geod = Geodesic.WGS84
         lat_shift, lon_shift = np.clip(
             np.random.normal(
-                loc=0.0, scale=(self.tile_size - 50) / 4, size=2
+                loc=0.0, scale=(tile_size - 50) / 4, size=2
             ),
-            - (self.tile_size - 50) / 2,
-            (self.tile_size - 50) / 2
-        ).tolist()
+            - (tile_size - 50) / 2, (tile_size - 50) / 2).tolist()
         if lat_shift < 0:
             lat_shift_degree = 180
         else:
@@ -139,39 +127,74 @@ class BridgeDataset(Dataset):
             lon_shift_degree = 90
         else:
             lon_shift_degree = -90
-        lat_shifted = self.geod.Direct(lat, lon, lat_shift_degree, lat_shift)
+        lat_shifted = geod.Direct(lat, lon, lat_shift_degree, lat_shift)
         new_lat, new_lon = lat_shifted["lat2"], lat_shifted["lon2"]
-        lon_shifted = self.geod.Direct(
+        lon_shifted = geod.Direct(
             new_lat, new_lon, lon_shift_degree, lat_shift)
         new_lat, new_lon = lon_shifted["lat2"], lon_shifted["lon2"]
         return new_lon, new_lat
 
+    @staticmethod
+    def sample_points_in_polygon(polygon, num_samples=1):
+        points = []
+        min_x, min_y, max_x, max_y = polygon.bounds
+        while len(points) < num_samples:
+            x, y = np.random.uniform(
+                min_x, max_x), np.random.uniform(min_y, max_y)
+            point = Point(x, y)
+            if polygon.contains(point):
+                points.append((x, y))
+        return points
+
     def __getitem__(self, idx):
         # get dataset entry
-        entry = self.training_data.iloc[idx]
+        entry = self.train_gdf.iloc[idx]
         country = entry.Country
         # positives
         if entry.pos_neg == "pos":
             label = 1
             lon, lat = entry["GPS (Longitude)"], entry["GPS (Latitude)"]
             if self.use_rnd_pos:
-                lon, lat = self.shift_coords(lon, lat)
-            # coordinates of area with size tile_size
-            area_coords = get_square_area(
-                lon, lat, square_length=self.tile_size)
-            # get left = lat, bottom = lon, right = lat, top = lon
-            left = min([ac[0] for ac in area_coords])
-            bottom = min([ac[1] for ac in area_coords])
-            right = max([ac[0] for ac in area_coords])
-            top = max([ac[1] for ac in area_coords])
+                valid_point = False
+                max_num_tries, num_tries = 5, 0
+                while num_tries < max_num_tries or valid_point is False:
+                    num_tries += 1
+                    lon, lat = self.shift_coords(lon, lat)
+                    area_coords = get_square_area(
+                        lon, lat, square_length=self.tile_size)
+                    left = min([ac[0] for ac in area_coords])
+                    right = max([ac[0] for ac in area_coords])
+                    if (entry.min_x < left < entry.max_x and
+                            entry.min_x < right < entry.max_x):
+                        valid_point = True
+            if valid_point is False:
+                lon, lat = entry["GPS (Longitude)"], entry["GPS (Latitude)"]
         elif entry.pos_neg == "neg":
             label = 0
-            left = entry.left
-            right = entry.right
-            bottom = entry.bottom
-            top = entry.top
+            valid_point = False
+            max_num_tries, num_tries = 5, 0
+            while num_tries < max_num_tries or valid_point is False:
+                num_tries += 1
+                lon, lat = self.sample_points_in_polygon(entry.geometry)
+                area_coords = get_square_area(
+                    lon, lat, square_length=self.tile_size)
+                left = min([ac[0] for ac in area_coords])
+                right = max([ac[0] for ac in area_coords])
+                if (entry.min_x < left < entry.max_x and
+                        entry.min_x < right < entry.max_x):
+                    valid_point = True
         else:
             raise NotImplementedError
+
+        # coordinates of area with size tile_size
+        area_coords = get_square_area(
+            lon, lat, square_length=self.tile_size)
+        # get left = lat, bottom = lon, right = lat, top = lon
+        left = min([ac[0] for ac in area_coords])
+        bottom = min([ac[1] for ac in area_coords])
+        right = max([ac[0] for ac in area_coords])
+        top = max([ac[1] for ac in area_coords])
+
         imgs = []
         for data_name in DATA_ORDER:
             raster = self.data_rasters[country][data_name]
@@ -183,7 +206,67 @@ class BridgeDataset(Dataset):
                 imgs.append(np.expand_dims(r, -1))
         # TODO transform to torch.Tensor
         # TODO return label
-        return np.abs(np.concatenate(imgs, -1))
+        return np.abs(np.concatenate(imgs, -1)), label
 
     def __len__(self):
-        return len(self.training_data)
+        return len(self.train_gdf)
+
+
+class BridgeSampler(Sampler[int]):
+
+    def __init__(self, tile_size, num_samples=None, set_name="train",
+                 shuffle=True) -> None:
+        assert tile_size in [300, 600, 1200], "Tile size not known"
+        assert set_name in ["train", "val", "test"], "Set name not known."
+
+        with open("./data/ground_truth/v2/train_{}.geojson".format(
+                tile_size)) as f:
+            train_gdf = gpd.read_file(f)
+
+        self.num_pos_samples = len(train_gdf[
+            train_gdf.split.str.startswith(set_name) &
+            (train_gdf.pos_neg == "pos")
+        ])
+        if num_samples is None:
+            self.num_samples = 2 * self.num_pos_samples
+        else:
+            assert isinstance(num_samples, int), \
+                "Expected num_samples to be int"
+            self.num_samples = max(num_samples, self.num_pos_samples)
+        self.shuffle = shuffle
+        self.train_gdf = train_gdf
+
+        pos = train_gdf[
+            train_gdf.split.str.startswith(set_name) & (
+                train_gdf.pos_neg == "pos")
+        ].index.tolist()
+
+        neg = train_gdf[
+            train_gdf.split.str.startswith(set_name) & (
+                train_gdf.pos_neg == "neg")
+        ].index.tolist()
+
+        num_neg = max(self.num_samples - len(pos), len(neg))
+        num_neg_per_neg = num_neg // len(neg)
+        new_neg = []
+
+        for i in range(len(neg) - 1):
+            new_neg += [neg[i]] * num_neg_per_neg
+        new_neg += [neg[-1]] * (num_neg - len(new_neg))
+        neg = new_neg
+
+        self.indeces = list(pos + neg)
+
+    def __iter__(self) -> Iterator[int]:
+
+        if self.shuffle:
+            ind_order = np.random.choice(
+                list(range(len(self.indeces))), len(self.indeces),
+                replace=False)
+        else:
+            ind_order = range(len(self.indeces))
+        indeces = [self.indeces[i] for i in ind_order]
+        yield from iter(indeces)
+
+    def __len__(self) -> int:
+        return self.num_samples

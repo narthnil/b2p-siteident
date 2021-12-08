@@ -141,3 +141,7 @@ dmypy.json
 *.geojson
 data/*/*.json
 data/*/*.csv
+data/*/*/*.csv
+
+# vscode
+launch.json
