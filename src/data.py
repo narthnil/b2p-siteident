@@ -205,10 +205,10 @@ class BridgeDataset(Dataset):
             for c in TRAIN_METADATA[country][data_name]["raster_channels"]:
                 r = raster.read(
                     c, window=window, out_shape=OUTPUT_SIZE[self.tile_size])
-                imgs.append(np.expand_dims(r, -1))
+                imgs.append(np.expand_dims(r, 0))
         # TODO transform to torch.Tensor
         # TODO return label
-        return np.abs(np.concatenate(imgs, -1)), label
+        return np.abs(np.concatenate(imgs, 0)), label
 
     def __len__(self):
         return len(self.train_gdf)

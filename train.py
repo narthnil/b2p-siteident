@@ -98,7 +98,7 @@ def train():
 
     cudnn.benchmark = True
     # model
-    model = models.BridgeResnet(args.in_channels, model_name=args.model)
+    model = models.BridgeResnet(model_name=args.model)
     # loss
     criterion = nn.CrossEntropyLoss(reduction="none")
     # ddp, cuda
