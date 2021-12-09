@@ -4,7 +4,7 @@ import rasterio
 
 from shapely.geometry import Polygon
 
-from src.data_epsg_4326 import get_square_area
+from src.data import get_square_area
 
 
 def get_dfs():
