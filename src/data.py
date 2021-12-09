@@ -275,16 +275,25 @@ class BridgeSampler(Sampler[int]):
 
 
 def get_training_and_validation_dataloaders(
-    split: float,
-    batch_size: int,
-    tile_size: int
+    split: float, batch_size: int, tile_size: int
 ) -> Tuple[DataLoader, DataLoader]:
-    dataset = BridgeDataset()
-    len_train = math.floor(len(dataset) * split)
-    len_validation = len(dataset) - len_train
-    dataset_train, dataset_validation = random_split(dataset, [len_train, len_validation])
-    sampler_train = BridgeSampler(tile_size=tile_size, num_samples=batch_size, set_name="train", shuffle=True)
-    sampler_validation = BridgeSampler(tile_size=tile_size, num_samples=batch_size, set_name="val", shuffle=True)
-    dataloader_train = DataLoader(dataset_train, sampler=sampler_train)
-    dataloader_validation = DataLoader(dataset_validation, sampler=sampler_validation)
+    dataset = BridgeDataset(tile_size, use_rnd_pos=True)
+    num_training_samples = math.floor(split * len(dataset))
+    num_validation_samples = len(dataset) - num_training_samples
+    sampler_train = BridgeSampler(
+        tile_size=tile_size,
+        num_samples=num_training_samples,
+        set_name="train",
+        shuffle=True,
+    )
+    sampler_validation = BridgeSampler(
+        tile_size=tile_size,
+        num_samples=num_validation_samples,
+        set_name="val",
+        shuffle=True,
+    )
+    dataloader_train = DataLoader(dataset, batch_size=batch_size, sampler=sampler_train)
+    dataloader_validation = DataLoader(
+        dataset, batch_size=batch_size, sampler=sampler_validation
+    )
     return dataloader_train, dataloader_validation
