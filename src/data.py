@@ -1,4 +1,4 @@
-import math
+import itertools
 
 import numpy as np
 import geopandas as gpd
@@ -9,8 +9,13 @@ from typing import Iterator, Tuple
 
 from geographiclib.geodesic import Geodesic
 from shapely.geometry import Point
+from torchvision import transforms
 
-from torch.utils.data import Dataset, Sampler, random_split, DataLoader
+from torch.utils.data import Dataset, Sampler, DataLoader
+
+OUTPUT_SIZE = {300: (12, 12), 600: (24, 24), 1200: (48, 48)}
+DATA_ORDER = ["population", "osm_imgs", "elevation", "slope", "roads",
+              "waterways", "admin_bounds"]
 
 TRAIN_METADATA = {
     "Rwanda": {
@@ -30,6 +35,18 @@ TRAIN_METADATA = {
         "slope": {
             "fp": "./data/slope_elevation/slope_rwanda.tif",
             "raster_channels": [2]
+        },
+        "roads": {
+            "fp": "./data/osm/roads/rwanda-osm-roads.tif",
+            "raster_channels": [1]
+        },
+        "waterways": {
+            "fp": "./data/osm/waterways/rwanda-osm-waterways.tif",
+            "raster_channels": [1]
+        },
+        "admin_bounds": {
+            "fp": "./data/admin_boundaries/RWATIFF.tif",
+            "raster_channels": [1]
         }
     },
     "Uganda": {
@@ -49,18 +66,67 @@ TRAIN_METADATA = {
         "slope": {
             "fp": "./data/slope_elevation/slope_uganda.tif",
             "raster_channels": [2]
+        },
+        "roads": {
+            "fp": "./data/osm/roads/uganda-osm-roads.tif",
+            "raster_channels": [1]
+        },
+        "waterways": {
+            "fp": "./data/osm/waterways/uganda-osm-waterways.tif",
+            "raster_channels": [1]
+        },
+        "admin_bounds": {
+            "fp": "./data/admin_boundaries/UGATIFF.tif",
+            "raster_channels": [1]
         }
     },
 }
 
-OUTPUT_SIZE = {300: (12, 12), 600: (24, 24), 1200: (48, 48)}
-DATA_ORDER = ["population", "osm_imgs", "elevation", "slope"]
+STATS = {
+    'population': {
+        'mean': [15.15371],
+        'std': [17.416014]
+    },
+    'osm_imgs': {
+        'mean': [231.70203462324238, 233.31144228855203, 223.8425571862376],
+        'std': [21.524828241358563, 14.25528330439599, 20.398400049322305]
+    },
+    'elevation': {
+        'mean': [207.0415114662796],
+        'std': [9.887098411667573]},
+    'slope': {
+        'mean': [221.30385049308214],
+        'std': [25.86962156126275]
+    },
+    'roads': {
+        'mean': [0.1574539505484869],
+        'std': [0.9817562848256564]},
+    'waterways': {
+        'mean': [0.016318895533805403],
+        'std': [0.2068613878439112]
+    },
+    'admin_bounds': {
+        'mean': [0.020786579681379737],
+        'std': [0.14266919003950856]}
+}
 
 TRAINING_DATA = {
     300: "./data/ground_truth/v2/training_data_300.csv",
     600: "./data/ground_truth/v2/training_data_600.csv",
     1200: "./data/ground_truth/v2/training_data_1200.csv"
 }
+
+
+class UnNormalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.mul_(s).add_(m)
+            # The normalize code -> t.sub_(m).div_(s)
+        return tensor
 
 
 def get_square_area(longitude: float, latitude: float,
@@ -111,6 +177,29 @@ class BridgeDataset(Dataset):
 
         self.use_rnd_pos = use_rnd_pos
         self.transform = transform
+        self.transform_func = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                list(itertools.chain(
+                    *[STATS[name]["mean"] for name in DATA_ORDER])),
+                list(itertools.chain(
+                    *[STATS[name]["std"] for name in DATA_ORDER])))
+
+        ])
+        self.invert_transform_func = transforms.Compose([
+            UnNormalize(
+                list(itertools.chain(
+                    *[STATS[name]["mean"] for name in DATA_ORDER])),
+                list(itertools.chain(
+                    *[STATS[name]["std"] for name in DATA_ORDER])))
+
+        ])
+
+    def convert_tensor_2_numpy(self, imgs):
+        if self.transform:
+            imgs = self.invert_transform_func(imgs)
+        imgs = imgs.permute(1, 2, 0).cpu().numpy()
+        return imgs
 
     @staticmethod
     def shift_coords(lon, lat, tile_size=300):
@@ -159,7 +248,7 @@ class BridgeDataset(Dataset):
             if self.use_rnd_pos:
                 valid_point = False
                 max_num_tries, num_tries = 5, 0
-                while num_tries < max_num_tries or valid_point is False:
+                while num_tries < max_num_tries and valid_point is False:
                     num_tries += 1
                     lon, lat = self.shift_coords(lon, lat)
                     area_coords = get_square_area(
@@ -175,7 +264,7 @@ class BridgeDataset(Dataset):
             label = 0
             valid_point = False
             max_num_tries, num_tries = 5, 0
-            while num_tries < max_num_tries or valid_point is False:
+            while num_tries < max_num_tries and valid_point is False:
                 num_tries += 1
                 lon, lat = self.sample_points_in_polygon(entry.geometry)[0]
                 area_coords = get_square_area(
@@ -205,10 +294,13 @@ class BridgeDataset(Dataset):
             for c in TRAIN_METADATA[country][data_name]["raster_channels"]:
                 r = raster.read(
                     c, window=window, out_shape=OUTPUT_SIZE[self.tile_size])
-                imgs.append(np.expand_dims(r, 0))
+                imgs.append(np.expand_dims(r, -1))
         # TODO transform to torch.Tensor
         # TODO return label
-        return np.abs(np.concatenate(imgs, 0)), label
+        imgs = np.abs(np.concatenate(imgs, -1))
+        if self.transform:
+            imgs = self.transform_func(imgs)
+        return imgs, label
 
     def __len__(self):
         return len(self.train_gdf)
@@ -275,16 +367,14 @@ class BridgeSampler(Sampler[int]):
 
 
 def get_training_and_validation_dataloaders(
-    split: float,
-    batch_size: int,
-    tile_size: int
-) -> Tuple[DataLoader, DataLoader]:
-    dataset = BridgeDataset()
-    len_train = math.floor(len(dataset) * split)
-    len_validation = len(dataset) - len_train
-    dataset_train, dataset_validation = random_split(dataset, [len_train, len_validation])
-    sampler_train = BridgeSampler(tile_size=tile_size, num_samples=batch_size, set_name="train", shuffle=True)
-    sampler_validation = BridgeSampler(tile_size=tile_size, num_samples=batch_size, set_name="val", shuffle=True)
-    dataloader_train = DataLoader(dataset_train, sampler=sampler_train)
-    dataloader_validation = DataLoader(dataset_validation, sampler=sampler_validation)
+        batch_size: int, tile_size: int) -> Tuple[DataLoader, DataLoader]:
+    dataset = BridgeDataset(tile_size, use_rnd_pos=True)
+    sampler_train = BridgeSampler(
+        tile_size=tile_size, set_name="train", shuffle=True)
+    sampler_validation = BridgeSampler(
+        tile_size=tile_size, set_name="val", shuffle=True)
+    dataloader_train = DataLoader(
+        dataset, sampler=sampler_train, batch_size=batch_size)
+    dataloader_validation = DataLoader(
+        dataset, sampler=sampler_validation, batch_size=batch_size)
     return dataloader_train, dataloader_validation
