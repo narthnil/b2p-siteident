@@ -8,7 +8,10 @@ from typing import Iterator
 from geographiclib.geodesic import Geodesic
 from shapely.geometry import Point
 
+import torch
 from torch.utils.data import Dataset, Sampler
+from torchvision import transforms
+
 
 
 TRAIN_METADATA = {
@@ -165,7 +168,9 @@ class BridgeDataset(Dataset):
             if self.use_rnd_pos:
                 valid_point = False
                 max_num_tries, num_tries = 5, 0
-                while num_tries < max_num_tries or valid_point is False:
+                while num_tries < max_num_tries and valid_point is False:
+                    if num_tries>max_num_tries:
+                        print("condition met")
                     num_tries += 1
                     lon, lat = self.shift_coords(lon, lat)
                     area_coords = get_square_area(
@@ -181,7 +186,7 @@ class BridgeDataset(Dataset):
             label = 0
             valid_point = False
             max_num_tries, num_tries = 5, 0
-            while num_tries < max_num_tries or valid_point is False:
+            while num_tries < max_num_tries and valid_point is False:
                 num_tries += 1
                 lon, lat = self.sample_points_in_polygon(entry.geometry)[0]
                 area_coords = get_square_area(
@@ -212,9 +217,18 @@ class BridgeDataset(Dataset):
                 r = raster.read(
                     c, window=window, out_shape=OUTPUT_SIZE[self.tile_size])
                 imgs.append(np.expand_dims(r, -1))
+                
+        imgs=np.abs(np.concatenate(imgs, -1))
+
         # TODO transform to torch.Tensor
+        imgs=torch.tensor(imgs)
+        imgs=imgs.permute((2,0,1))
+        
+        if self.transform:
+            imgs=self.transform(imgs)
+        
         # TODO return label
-        return np.abs(np.concatenate(imgs, -1)), label
+        return imgs,label
 
     def __len__(self):
         return len(self.train_gdf)
