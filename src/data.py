@@ -248,6 +248,7 @@ class BridgeDataset(Dataset):
             if self.use_rnd_pos:
                 valid_point = False
                 max_num_tries, num_tries = 5, 0
+                # not fail save
                 while num_tries < max_num_tries and valid_point is False:
                     num_tries += 1
                     lon, lat = self.shift_coords(lon, lat)
@@ -264,6 +265,7 @@ class BridgeDataset(Dataset):
             label = 0
             valid_point = False
             max_num_tries, num_tries = 5, 0
+            # not fail save
             while num_tries < max_num_tries and valid_point is False:
                 num_tries += 1
                 lon, lat = self.sample_points_in_polygon(entry.geometry)[0]
@@ -366,15 +368,19 @@ class BridgeSampler(Sampler[int]):
         return self.num_samples
 
 
-def get_training_and_validation_dataloaders(
+def get_dataloaders(
         batch_size: int, tile_size: int) -> Tuple[DataLoader, DataLoader]:
-    dataset = BridgeDataset(tile_size, use_rnd_pos=True)
+    dataset = BridgeDataset(tile_size, use_rnd_pos=True, transform=True)
     sampler_train = BridgeSampler(
         tile_size=tile_size, set_name="train", shuffle=True)
     sampler_validation = BridgeSampler(
+        tile_size=tile_size, set_name="val", shuffle=True)
+    sampler_test = BridgeSampler(
         tile_size=tile_size, set_name="val", shuffle=True)
     dataloader_train = DataLoader(
         dataset, sampler=sampler_train, batch_size=batch_size)
     dataloader_validation = DataLoader(
         dataset, sampler=sampler_validation, batch_size=batch_size)
-    return dataloader_train, dataloader_validation
+    dataloader_test = DataLoader(
+        dataset, sampler=sampler_test, batch_size=batch_size)
+    return dataloader_train, dataloader_validation, dataloader_test
