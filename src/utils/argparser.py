@@ -1,7 +1,7 @@
 import argparse
 
 
-def get_args():
+def get_args(parse_args=True, add_save_dir=True):
 
     parser = argparse.ArgumentParser("Argument for training.")
 
@@ -41,5 +41,11 @@ def get_args():
     # optimizer
     parser.add_argument("--lr", default=5e-4, type=float,
                         help="Adam optimizer learning rate.")
-    args = parser.parse_args()
-    return args
+    # save directory
+    if add_save_dir:
+        parser.add_argument("--save_dir", required=True, type=str)
+    if parse_args:
+        args = parser.parse_args()
+        return args
+    else:
+        return parser

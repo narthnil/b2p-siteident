@@ -368,6 +368,10 @@ class BridgeSampler(Sampler[int]):
         return self.num_samples
 
 
+def worker_init_fn(worker_id):
+    np.random.seed(np.random.get_state()[1][0] + worker_id)
+
+
 def get_dataloaders(
         batch_size: int, tile_size: int) -> Tuple[DataLoader, DataLoader]:
     dataset = BridgeDataset(tile_size, use_rnd_pos=True, transform=True)
@@ -378,9 +382,12 @@ def get_dataloaders(
     sampler_test = BridgeSampler(
         tile_size=tile_size, set_name="val", shuffle=True)
     dataloader_train = DataLoader(
-        dataset, sampler=sampler_train, batch_size=batch_size)
+        dataset, sampler=sampler_train, batch_size=batch_size,
+        worker_init_fn=worker_init_fn)
     dataloader_validation = DataLoader(
-        dataset, sampler=sampler_validation, batch_size=batch_size)
+        dataset, sampler=sampler_validation, batch_size=batch_size,
+        worker_init_fn=worker_init_fn)
     dataloader_test = DataLoader(
-        dataset, sampler=sampler_test, batch_size=batch_size)
+        dataset, sampler=sampler_test, batch_size=batch_size,
+        worker_init_fn=worker_init_fn)
     return dataloader_train, dataloader_validation, dataloader_test
