@@ -37,6 +37,14 @@ TRAIN_METADATA = {
             "fp": "./data/admin_boundaries/RWATIFF.tif",
             "raster_channels": [1]
         }
+        "waterways": {
+            "fp": "./data/osm/waterways/rwanda-osm-waterways.tif",
+            "raster_channels": [1]
+        },
+        "roads": {
+            "fp": "./data/osm/roads/rwanda-osm-roads.tif",
+            "raster_channels": [1]
+        },
     },
     "Uganda": {
         "population": {
@@ -58,6 +66,14 @@ TRAIN_METADATA = {
         },
         "admin_boundaries": {
             "fp": "./data/admin_boundaries/UGATIFF.tif",
+            "raster_channels": [1]
+        },
+        "waterways": {
+            "fp": "./data/osm/waterways/uganda-osm-waterways.tif",
+            "raster_channels": [1]
+        },
+         "roads": {
+            "fp": "./data/osm/roads/uganda-osm-roads.tif",
             "raster_channels": [1]
         }
     },
