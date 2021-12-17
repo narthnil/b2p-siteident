@@ -142,6 +142,8 @@ dmypy.json
 data/*/*.json
 data/*/*.csv
 data/*/*/*.csv
+data/*/*.zip
+data/*/*/*.zip
 
 # vscode
 launch.json

@@ -4,7 +4,7 @@ import rasterio
 
 from shapely.geometry import Polygon
 
-from src.data_epsg_4326 import get_square_area
+from src.data import get_square_area
 
 
 def get_dfs():
@@ -103,8 +103,7 @@ if __name__ == "__main__":
             [bounds["uganda"]["left"], bounds["uganda"]["bottom"]]])],
         crs=crs, columns=["geometry"]
     )
-    uganda_te_bounds = uganda_bounds.overlay(
-        uganda_te_bounds, how="intersection")
+    uganda_bounds = uganda_bounds.overlay(uganda_te_bounds, how="intersection")
 
     rwanda_tr_lower_bounds = gpd.GeoDataFrame([
         Polygon([
