@@ -103,10 +103,10 @@ def run(
         )
         with torch.no_grad():
             epoch_loss_validation, acc_val, stats_val = test_for_an_epoch(
-                model, criterion, dataloader_validation, epoch, cuda
+                model, criterion, dataloader_validation, cuda
             )
             epoch_loss_test, acc_test, stats_test = test_for_an_epoch(
-                model, criterion, dataloader_test, epoch, cuda
+                model, criterion, dataloader_test, cuda
             )
         print(
             "[Train epoch {:d}] loss: {:.4f} acc: {:.2f}%".format(
