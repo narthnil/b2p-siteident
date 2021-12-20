@@ -18,7 +18,9 @@ To solve above issue we can use to_crs() method.
 ## Step by Step Process
 1) Use "Raster Vector Data without any tif file.ipynb" python note book
 2) call function pts2raster_without_tiff_file_input(........) to rasterize shp file
+   
    Syntax to use:
    pts2raster_without_tiff_file_input(InputShapeFileName, OutputTiffFileName, Resolution)
+   
    Example:
    pts2raster_without_tiff_file_input("Uganda_Parish.shp","Uganda_Parish.tif", 0.000277)
