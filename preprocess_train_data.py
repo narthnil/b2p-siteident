@@ -57,8 +57,7 @@ def get_bounds():
         "top": max_lat
     }
 
-    rwanda_fp = ("./data/country_masks/used_for_pre_processing/"
-                 "rwanda_mask_1-3600.tiff")
+    rwanda_fp = ("./data/country_masks/rwanda_mask_1-3600.tiff")
     rwanda = rasterio.open(rwanda_fp)
 
     bounds_dict["rwanda"] = {
@@ -89,10 +88,8 @@ if __name__ == "__main__":
     bounds = get_bounds()
     va_range = get_rwanda_va_range(bounds)
 
-    rwanda_bounds = gpd.read_file(
-        "./data/country_masks/used_for_pre_processing/rwanda.shp")
-    uganda_bounds = gpd.read_file(
-        "./data/country_masks/used_for_pre_processing/uganda.shp")
+    rwanda_bounds = gpd.read_file("./data/country_masks/rwanda.shp")
+    uganda_bounds = gpd.read_file("./data/country_masks/uganda.shp")
 
     # bounds for tr, va, te
     uganda_te_bounds = gpd.GeoDataFrame([
@@ -294,4 +291,4 @@ if __name__ == "__main__":
         df_pos_neg = gpd.GeoDataFrame(
             pd.concat([df, negs]).reset_index(drop=True), crs=crs)
         df_pos_neg.to_file(
-            "./data/ground_truth/v2/train_{}.geojson".format(tile_size))
+            "./data/ground_truth/train_{}.geojson".format(tile_size))

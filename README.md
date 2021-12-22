@@ -37,6 +37,16 @@ gdal_rasterize data/osm/rwanda/roads/gis_osm_roads_free_1_with_tag_value.shp dat
 ```
 The documentation on this service is found [here](https://gdal.org/programs/gdal_rasterize.html).
 
+# Preprocess data
+
+Download `data.zip` from B2P Google drive and put the file into this repository.
+Use the following commands to extract the files and move them to the `./data/` folder.
+
+```
+bash extract_data.sh
+python preprocess_train_data.py
+```
+
 ## Model training
 
 ```
