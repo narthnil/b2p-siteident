@@ -46,3 +46,37 @@ B2P specific Uganda area:
 * East: 30.7
 * South: -0.28
 * West: 29.6
+
+##
+
+```
+import rasterio
+from rasterio.merge import merge
+from rasterio.plot import show
+
+# open image parts of Uganda
+src_pt1 = rasterio.open(
+    "./data/osm/imgs/uganda_pt1_osm_nolab_1-50000_4326.tiff")
+src_pt2 = rasterio.open(
+    "./data/osm/imgs/uganda_pt2_osm_nolab_1-50000_4326.tiff")
+
+# merge images
+src, out_transf = merge([src_pt1, src_pt2])
+
+# copy and adjust metadata
+out_meta = src_pt1.meta.copy()
+out_meta.update({
+    "driver": "GTiff",
+    "height": src.shape[1],
+    "width": src.shape[2],
+    "transform": out_transf
+})
+
+# write to file
+with rasterio.open(
+        "./data/osm/imgs/uganda_osm_nolab_1-50000_4326.tiff",
+        "w", **out_meta) as f:
+    f.write(src)
+
+
+```
