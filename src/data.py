@@ -45,7 +45,7 @@ TRAIN_METADATA = {
             "raster_channels": [1]
         },
         "admin_bounds": {
-            "fp": "./data/admin_boundaries/RWATIFF.tif",
+            "fp": "./data/admin_boundaries/GADM_rwanda.tif",
             "raster_channels": [1]
         }
     },
@@ -76,7 +76,7 @@ TRAIN_METADATA = {
             "raster_channels": [1]
         },
         "admin_bounds": {
-            "fp": "./data/admin_boundaries/UGATIFF.tif",
+            "fp": "./data/admin_boundaries/GADM_uganda.tif",
             "raster_channels": [1]
         }
     },
@@ -299,7 +299,7 @@ class BridgeDataset(Dataset):
                 imgs.append(np.expand_dims(r, -1))
         # TODO transform to torch.Tensor
         # TODO return label
-        imgs = np.abs(np.concatenate(imgs, -1))
+        imgs = np.abs(np.concatenate(imgs, -1)).astype(np.float32)
         if self.transform:
             imgs = self.transform_func(imgs)
         return imgs, label

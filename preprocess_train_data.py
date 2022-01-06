@@ -57,7 +57,7 @@ def get_bounds():
         "top": max_lat
     }
 
-    rwanda_fp = ("./data/country_masks/used_for_pre_processing/"
+    rwanda_fp = ("./data/country_masks/"
                  "rwanda_mask_1-3600.tiff")
     rwanda = rasterio.open(rwanda_fp)
 
@@ -90,9 +90,9 @@ if __name__ == "__main__":
     va_range = get_rwanda_va_range(bounds)
 
     rwanda_bounds = gpd.read_file(
-        "./data/country_masks/used_for_pre_processing/rwanda.shp")
+        "./data/country_masks/rwanda.shp")
     uganda_bounds = gpd.read_file(
-        "./data/country_masks/used_for_pre_processing/uganda.shp")
+        "./data/country_masks/uganda.shp")
 
     # bounds for tr, va, te
     uganda_te_bounds = gpd.GeoDataFrame([

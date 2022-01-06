@@ -43,3 +43,7 @@ The documentation on this service is found [here](https://gdal.org/programs/gdal
 python -m torch.distributed.launch --master_addr="127.0.0.2" --master_port=8798 --nproc_per_node=4 train.py
 
 ```
+
+## QGIS
+
+QGIS is a free GIS software that allows users to easily view and manipulate geospatial data. The download page can be found [here](https://qgis.org/en/site/forusers/download.html).

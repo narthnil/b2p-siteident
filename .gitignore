@@ -145,5 +145,7 @@ data/*/*/*.csv
 data/*/*.zip
 data/*/*/*.zip
 
+training_jobs/
+
 # vscode
 launch.json
