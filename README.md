@@ -51,5 +51,23 @@ python preprocess_train_data.py
 
 ```
 python -m torch.distributed.launch --master_addr="127.0.0.2" --master_port=8798 --nproc_per_node=4 train.py
-
 ```
+
+## Rasterizing Vector Geometry using QGIS
+
+The following are the instructions for rasterizing vector geometries using QGIS. 
+
+1. Import the vector geometry into QGIS.
+![](docs_imgs/AddVectorLayer.png)
+This will present a new page which allows you to search for a specific file, after which you may select `Add`
+2. Convert the vector geometry to raster.
+![](docs_imgs/Rasterization.png)
+3. Input parameters according to your specifications.
+![](docs_imgs/RasterizationParameters.png)
+The image above shows some of the parameters used previously, specifically:
+- Input layer: Which file you want to convert
+- Field to use for a burn-in value: Which feature in the vector geometry whose values will become the pixel values in the corresponding raster
+- Output raster size units: Select `Georeferenced units` as this will ensure the raster is georeferenced
+- Width/Height fields: We used one arc/second (1/3600) for the resolution
+- Output extent: Select the three dots at the right edge and select for the output extent to be derived from the data
+- Rasterized: Input the file destination of the raster (otherwise a temporary file will be used)

@@ -29,6 +29,9 @@ This will write a new dataset to:
 
 Now we can rasterize this vector dataset, using QGIS or GDAL. 
 
+### GQIS rasterize (recommended)
+Instructions for rasterizing using QGIS can be gound in the project's root README. Be sure to select this "layer" when converting.
+
 ### Gdal rasterize
 
 The command from GDAL is:

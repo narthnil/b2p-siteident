@@ -27,7 +27,10 @@ python src/scripts/get_value_from_osm_tag.py --source waterways --country <count
 This will write a new dataset to:
 `data/osm/{country}/waterways/gis_osm_waterways_free_1_with_tag_value.shp`
 
-Now we can rasterize this vector dataset, using QGIS or GDAL. 
+Now we can rasterize this vector dataset, using QGIS or GDAL.
+
+### GQIS rasterize (recommended)
+Instructions for rasterizing using QGIS can be gound in the project's root README. Be sure to select this "layer" when converting. 
 
 ### Gdal rasterize
 
