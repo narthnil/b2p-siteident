@@ -6,9 +6,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
+from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import DataLoader
 
 from src import models
+from src.models import SimpleCNN
 from src.utils import argparser, dist
 from src.data import get_dataloaders
 
@@ -83,6 +85,7 @@ def run(
     criterion: nn.Module,
     dataloaders,
     optimizer,
+    scheduler,
     epochs: int,
     save_dir: str,
     log_interval: int = None,
@@ -101,6 +104,7 @@ def run(
             log_interval=log_interval,
             cuda=cuda,
         )
+        scheduler.step()
         with torch.no_grad():
             epoch_loss_validation, acc_val, stats_val = test_for_an_epoch(
                 model, criterion, dataloader_validation, cuda
@@ -158,6 +162,7 @@ def train(args):
     cudnn.benchmark = True
     # model
     model = models.BridgeResnet(model_name=args.model)
+    # model = SimpleCNN()
     # loss
     criterion = nn.CrossEntropyLoss()
     # ddp, cuda
@@ -170,11 +175,13 @@ def train(args):
     dataloaders = get_dataloaders(args.batch_size, args.tile_size)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = ExponentialLR(optimizer, gamma=0.9)
     run(
         model,
         criterion,
         dataloaders,
         optimizer,
+        scheduler,
         args.epochs,
         args.save_dir,
         log_interval=args.log_interval,

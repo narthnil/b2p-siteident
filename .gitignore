@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 # MacOS stuff
-.DS_Store
+.DS_Store tr
 
 # OSM data (too big)
 *.tif
