@@ -15,14 +15,6 @@ pip install -r requirements.txt
 # pip install torch==1.10.0+cpu torchvision==0.11.1+cpu torchaudio==0.10.0+cpu -f https://download.pytorch.org/whl/cpu/torch_stable.html
 ```
 
-Download [git-lfs](https://github.com/git-lfs/git-lfs) for managing large files with Git.
-Once downloaded and installed, set up Git LFS for your user account by running:
-
-```
-git lfs install
-```
-
-
 ## Install gdal
 
 [Gdal](https://gdal.org/) is a great tool for fast manipulation of rasters. However, it can be tricky to install. The best option it to install with Homebrew (in the current conda environment):
@@ -45,12 +37,13 @@ Use the following commands to extract the files and move them to the `./data/` f
 ```
 bash extract_data.sh
 python preprocess_train_data.py
+python calculate_stats.py
 ```
 
 ## Model training
 
 ```
-python -m torch.distributed.launch --master_addr="127.0.0.2" --master_port=8798 --nproc_per_node=4 train.py
+python train.py --model resnet50 --tile_size 1200 --save_dir results/resnet50-1200
 ```
 
 ## Rasterizing Vector Geometry using QGIS

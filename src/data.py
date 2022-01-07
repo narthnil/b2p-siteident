@@ -1,4 +1,7 @@
+import json
 import itertools
+
+from typing import Tuple
 
 import numpy as np
 import geopandas as gpd
@@ -11,6 +14,7 @@ from geographiclib.geodesic import Geodesic
 from shapely.geometry import Point
 from torchvision import transforms
 
+import torch
 from torch.utils.data import Dataset, Sampler, DataLoader
 
 OUTPUT_SIZE = {300: (12, 12), 600: (24, 24), 1200: (48, 48)}
@@ -45,7 +49,8 @@ TRAIN_METADATA = {
             "raster_channels": [1]
         },
         "admin_bounds": {
-            "fp": "./data/admin_boundaries/RWATIFF.tif",
+            "fp": ("./data/admin_boundaries/"
+                   "Rwanda_Village_AdminBoundary_1_3600_clipped.tiff"),
             "raster_channels": [1]
         }
     },
@@ -56,7 +61,7 @@ TRAIN_METADATA = {
             "raster_channels": [1]
         },
         "osm_imgs": {
-            "fp": "./data/osm/imgs/uganda_train_osm_nolab_1-50000_4326.tiff",
+            "fp": "./data/osm/imgs/uganda_osm_nolab_1-50000_4326.tiff",
             "raster_channels": [1, 2, 3]
         },
         "elevation": {
@@ -76,45 +81,20 @@ TRAIN_METADATA = {
             "raster_channels": [1]
         },
         "admin_bounds": {
-            "fp": "./data/admin_boundaries/UGATIFF.tif",
+            "fp": ("./data/admin_boundaries/"
+                   "Uganda_Parish_AdminBoundary_1_3600_clipped.tiff"),
             "raster_channels": [1]
         }
     },
 }
 
-STATS = {
-    'population': {
-        'mean': [15.15371],
-        'std': [17.416014]
-    },
-    'osm_imgs': {
-        'mean': [231.70203462324238, 233.31144228855203, 223.8425571862376],
-        'std': [21.524828241358563, 14.25528330439599, 20.398400049322305]
-    },
-    'elevation': {
-        'mean': [207.0415114662796],
-        'std': [9.887098411667573]},
-    'slope': {
-        'mean': [221.30385049308214],
-        'std': [25.86962156126275]
-    },
-    'roads': {
-        'mean': [0.1574539505484869],
-        'std': [0.9817562848256564]},
-    'waterways': {
-        'mean': [0.016318895533805403],
-        'std': [0.2068613878439112]
-    },
-    'admin_bounds': {
-        'mean': [0.020786579681379737],
-        'std': [0.14266919003950856]}
+TRAIN_DATA = {
+    300: "./data/ground_truth/train_300.geojson",
+    600: "./data/ground_truth/train_600.geojson",
+    1200: "./data/ground_truth/train_1200.geojson"
 }
 
-TRAINING_DATA = {
-    300: "./data/ground_truth/v2/training_data_300.csv",
-    600: "./data/ground_truth/v2/training_data_600.csv",
-    1200: "./data/ground_truth/v2/training_data_1200.csv"
-}
+STATS_FP = "./data/ground_truth/stats.json"
 
 
 class UnNormalize(object):
@@ -126,6 +106,19 @@ class UnNormalize(object):
         for t, m, s in zip(tensor, self.mean, self.std):
             t.mul_(s).add_(m)
             # The normalize code -> t.sub_(m).div_(s)
+        return tensor
+
+
+class Normalize(object):
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        i = 0
+        for t, m, s in zip(tensor, self.mean, self.std):
+            t.sub_(m).div_(s)
+            i += 1
         return tensor
 
 
@@ -160,15 +153,17 @@ def get_square_area(longitude: float, latitude: float,
 
 
 class BridgeDataset(Dataset):
-    def __init__(self, tile_size=300, use_rnd_pos=False, transform=False):
+    def __init__(self, tile_size: int = 300, use_rnd_pos: bool = False,
+                 transform: bool = False, train_data: str = TRAIN_DATA,
+                 train_metadata: str = TRAIN_METADATA, stats_fp=STATS_FP,
+                 use_augment: bool = True):
         assert tile_size in [300, 600, 1200], "Tile size not known"
 
         self.tile_size = tile_size
-        with open("./data/ground_truth/v2/train_{}.geojson".format(
-                tile_size)) as f:
+        with open(train_data[tile_size]) as f:
             self.train_gdf = gpd.read_file(f)
         self.data_rasters = {}
-        for country, data_modalities in TRAIN_METADATA.items():
+        for country, data_modalities in train_metadata.items():
             if country not in self.data_rasters:
                 self.data_rasters[country] = {}
             for data_type, data in data_modalities.items():
@@ -177,27 +172,37 @@ class BridgeDataset(Dataset):
 
         self.use_rnd_pos = use_rnd_pos
         self.transform = transform
+        self.use_augment = use_augment
+
+        with open(stats_fp) as f:
+            self.stats = json.load(f)
         self.transform_func = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(
+            Normalize(
                 list(itertools.chain(
-                    *[STATS[name]["mean"] for name in DATA_ORDER])),
+                    *[self.stats[name]["mean"] for name in DATA_ORDER])),
                 list(itertools.chain(
-                    *[STATS[name]["std"] for name in DATA_ORDER])))
+                    *[self.stats[name]["std"] for name in DATA_ORDER])))
 
         ])
         self.invert_transform_func = transforms.Compose([
             UnNormalize(
                 list(itertools.chain(
-                    *[STATS[name]["mean"] for name in DATA_ORDER])),
+                    *[self.stats[name]["mean"] for name in DATA_ORDER])),
                 list(itertools.chain(
-                    *[STATS[name]["std"] for name in DATA_ORDER])))
+                    *[self.stats[name]["std"] for name in DATA_ORDER])))
 
         ])
+        self.train_metadata = train_metadata
 
     def convert_tensor_2_numpy(self, imgs):
         if self.transform:
             imgs = self.invert_transform_func(imgs)
+            max_vals = np.array(
+                list(itertools.chain(
+                    *[self.stats[name]["max"] for name in DATA_ORDER]
+                ))).reshape(
+                    -1, 1, 1)
+            imgs = imgs * max_vals
         imgs = imgs.permute(1, 2, 0).cpu().numpy()
         return imgs
 
@@ -293,30 +298,116 @@ class BridgeDataset(Dataset):
             raster = self.data_rasters[country][data_name]
             window = windows.from_bounds(
                 left, bottom, right, top, raster.transform)
-            for c in TRAIN_METADATA[country][data_name]["raster_channels"]:
+            for c in self.train_metadata[
+                    country][data_name]["raster_channels"]:
                 r = raster.read(
                     c, window=window, out_shape=OUTPUT_SIZE[self.tile_size])
+                if data_name == "admin_bounds":
+                    r[r == 127.] = 0.
+                elif data_name == "population":
+                    r[r < 0] = 0
                 imgs.append(np.expand_dims(r, -1))
-        # TODO transform to torch.Tensor
-        # TODO return label
-        imgs = np.abs(np.concatenate(imgs, -1))
+
+        imgs = np.concatenate(imgs, -1)
+        if self.use_augment:
+            imgs = self.augment(imgs)
+        # (#data modalities, h, w)
+        imgs = torch.from_numpy(imgs.copy()).permute(2, 0, 1)
         if self.transform:
+            # of shape (#data modalities, 1, 1)
+            max_vals = np.array(
+                list(itertools.chain(
+                    *[self.stats[name]["max"] for name in DATA_ORDER]
+                ))).reshape(
+                    -1, 1, 1)
+            imgs = imgs / max_vals
             imgs = self.transform_func(imgs)
         return imgs, label
 
     def __len__(self):
         return len(self.train_gdf)
 
+    def augment(self, img, random_fliplr: float = 0.5,
+                random_pop: Tuple = (0, 3), random_ele: Tuple = (0, 2),
+                random_slo: Tuple = (0, 2), random_osm_imgs: Tuple = (0, 3),
+                random_osm: float = 0.75):
+        if np.random.rand() > random_fliplr:
+            img = np.fliplr(img)
+
+        INDECES = [0]
+        current_ind = 0
+        for i in DATA_ORDER[:-1]:
+            current_ind += len(TRAIN_METADATA["Rwanda"][i]["raster_channels"])
+            INDECES.append(current_ind)
+
+        index_pop = INDECES[DATA_ORDER.index("population")]
+        height, width, _ = img.shape
+        img[:, :, index_pop:index_pop + 1] += np.random.normal(
+            loc=random_pop[0], scale=random_pop[1],
+            size=(height, width, 1)).round()
+        img[:, :, index_pop:index_pop + 1] = np.clip(
+            img[:, :, index_pop:index_pop + 1],
+            self.stats["population"]["min"][0],
+            self.stats["population"]["max"][0])
+
+        index_ele = INDECES[DATA_ORDER.index("elevation")]
+        img_ele = img[:, :, index_ele:index_ele + 1]
+        img_ele_new = np.array(img[:, :, index_ele:index_ele + 1])
+        unique_elems = sorted(np.unique(img_ele).tolist())
+        rnd = sorted(np.random.normal(
+            loc=random_ele[0], scale=random_ele[1], size=len(unique_elems)
+        ).round().tolist())
+        for i, elem in enumerate(unique_elems):
+            img_ele_new[np.where(img_ele == elem)] += rnd[i]
+        img[:, :, index_ele:index_ele + 1] = img_ele_new
+
+        index_slo = INDECES[DATA_ORDER.index("slope")]
+        img_slo = img[:, :, index_slo:index_slo + 1]
+        img_slo_new = np.array(img[:, :, index_slo:index_slo + 1])
+        unique_elems = sorted(np.unique(img_slo).tolist())
+        rnd = sorted(np.random.normal(
+            loc=random_slo[0], scale=random_slo[1], size=len(unique_elems)
+        ).round().tolist())
+        for i, elem in enumerate(unique_elems):
+            img_slo_new[np.where(img_slo == elem)] += rnd[i]
+        img[:, :, index_slo:index_slo + 1] = img_slo_new
+
+        index_imgs = INDECES[DATA_ORDER.index("osm_imgs")]
+        img[:, :, index_imgs:index_imgs + 3] += np.random.normal(
+            loc=random_osm_imgs[0], scale=random_osm_imgs[1],
+            size=(height, width, 3)).round()
+        img[:, :, index_imgs:index_imgs + 3] = np.clip(
+            img[:, :, index_imgs:index_imgs + 3], 0, 255)
+
+        index_roads = INDECES[DATA_ORDER.index("roads")]
+        p = np.random.rand(height, width, 1)
+        img_roads = img[:, :, index_roads:index_roads + 1]
+        img_roads[np.where(np.logical_and(p > random_osm, img_roads > 0))] = 0
+        img[:, :, index_roads:index_roads + 1] += img_roads
+
+        index_water = INDECES[DATA_ORDER.index("waterways")]
+        p = np.random.rand(height, width, 1)
+        img_water = img[:, :, index_water:index_water + 1]
+        img_water[np.where(np.logical_and(p > random_osm, img_water > 0))] = 0
+        img[:, :, index_water:index_water + 1] += img_water
+
+        index_admin = INDECES[DATA_ORDER.index("admin_bounds")]
+        p = np.random.rand(height, width, 1)
+        img_admin = img[:, :, index_admin:index_admin + 1]
+        img_admin[np.where(np.logical_and(p > random_osm, img_admin > 0))] = 0
+        img[:, :, index_admin:index_admin + 1] += img_admin
+
+        return img
+
 
 class BridgeSampler(Sampler[int]):
 
     def __init__(self, tile_size, num_samples=None, set_name="train",
-                 shuffle=True) -> None:
+                 shuffle=True, train_data=TRAIN_DATA) -> None:
         assert tile_size in [300, 600, 1200], "Tile size not known"
         assert set_name in ["train", "val", "test"], "Set name not known."
 
-        with open("./data/ground_truth/v2/train_{}.geojson".format(
-                tile_size)) as f:
+        with open(train_data[tile_size]) as f:
             train_gdf = gpd.read_file(f)
 
         self.num_pos_samples = len(train_gdf[
@@ -373,21 +464,34 @@ def worker_init_fn(worker_id):
 
 
 def get_dataloaders(
-        batch_size: int, tile_size: int) -> Tuple[DataLoader, DataLoader]:
-    dataset = BridgeDataset(tile_size, use_rnd_pos=True, transform=True)
+        batch_size: int, tile_size: int, train_data: str = TRAIN_DATA,
+        train_metadata: str = TRAIN_METADATA, num_workers: int = 0,
+        transform: bool = True, use_augment: bool = True,
+        stats_fp: str = STATS_FP) -> Tuple[DataLoader, DataLoader]:
+    tr_dataset = BridgeDataset(
+        tile_size, use_rnd_pos=True, transform=transform, stats_fp=stats_fp,
+        train_data=train_data, train_metadata=train_metadata,
+        use_augment=use_augment)
+    va_te_dataset = BridgeDataset(
+        tile_size, use_rnd_pos=True, transform=transform, stats_fp=stats_fp,
+        train_data=train_data, train_metadata=train_metadata,
+        use_augment=False)
     sampler_train = BridgeSampler(
-        tile_size=tile_size, set_name="train", shuffle=True)
+        tile_size=tile_size, set_name="train", shuffle=True,
+        train_data=train_data)
     sampler_validation = BridgeSampler(
-        tile_size=tile_size, set_name="val", shuffle=True)
+        tile_size=tile_size, set_name="val", shuffle=True,
+        train_data=train_data)
     sampler_test = BridgeSampler(
-        tile_size=tile_size, set_name="val", shuffle=True)
+        tile_size=tile_size, set_name="val", shuffle=True,
+        train_data=train_data)
     dataloader_train = DataLoader(
-        dataset, sampler=sampler_train, batch_size=batch_size,
-        worker_init_fn=worker_init_fn)
+        tr_dataset, sampler=sampler_train, batch_size=batch_size,
+        worker_init_fn=worker_init_fn, num_workers=num_workers)
     dataloader_validation = DataLoader(
-        dataset, sampler=sampler_validation, batch_size=batch_size,
-        worker_init_fn=worker_init_fn)
+        va_te_dataset, sampler=sampler_validation, batch_size=batch_size,
+        worker_init_fn=worker_init_fn, num_workers=num_workers)
     dataloader_test = DataLoader(
-        dataset, sampler=sampler_test, batch_size=batch_size,
-        worker_init_fn=worker_init_fn)
+        va_te_dataset, sampler=sampler_test, batch_size=batch_size,
+        worker_init_fn=worker_init_fn, num_workers=num_workers)
     return dataloader_train, dataloader_validation, dataloader_test

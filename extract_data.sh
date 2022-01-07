@@ -13,6 +13,9 @@ for fp in /tmp/data-b2p/data/country_masks/*.zip; do
 done;
 rm -rf  ./data/country_masks/__MACOSX/
 
+# ground truth
+cp /tmp/data-b2p/data/ground_truth/* ./data/ground_truth/
+
 # OSM
 for fp in /tmp/data-b2p/data/osm/imgs/*.zip; do
     unzip ${fp} -d ./data/osm/imgs/;

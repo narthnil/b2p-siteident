@@ -1,7 +1,11 @@
+import os.path as path
+
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import rasterio
 
+from rasterio.mask import mask
 from shapely.geometry import Polygon
 
 from src.data import get_square_area
@@ -134,13 +138,6 @@ if __name__ == "__main__":
     )
     rwanda_tr_upper_bounds = rwanda_tr_upper_bounds.overlay(
         rwanda_bounds, how="intersection")
-
-    # one polygon to show space of all positive points for sampling
-    # = tile_size - 50
-    # one polygon to show space of where negative points for sampling cannot be
-    # = tile_size - 50 + tile_size / 0.5 + tile_size / 0.5
-    # = tile_size - 50 + tile_size
-    # = 2 * tile_size - 50
 
     for tile_size in [300, 600, 1200]:
         rwanda_df, uganda_df = get_dfs()
@@ -292,3 +289,40 @@ if __name__ == "__main__":
             pd.concat([df, negs]).reset_index(drop=True), crs=crs)
         df_pos_neg.to_file(
             "./data/ground_truth/train_{}.geojson".format(tile_size))
+
+    rwanda_bounds = gpd.read_file("./data/country_masks/rwanda.shp")
+    base_fp = "./data/admin_boundaries/"
+    rwa_admin_fp = path.join(
+        base_fp, "Rwanda_Village_AdminBoundary_1_3600.tiff")
+    adj_rwa_admin_fp = rwa_admin_fp.replace(".tiff", "_adj.tiff")
+    masked_rwa_admin_fp = rwa_admin_fp.replace(".tiff", ".masked.tiff")
+    with rasterio.open(rwa_admin_fp) as src:
+        out_meta = src.meta.copy()
+        transform = src.transform
+        crs = src.crs
+        img = src.read(1)
+        img[img == 0] = 127
+        img = np.expand_dims(img, 0)
+
+    out_meta.update({
+        "driver": "GTiff",
+        "height": img.shape[1],
+        "width": img.shape[2],
+        "transform": transform,
+        "crs": crs
+    })
+
+    with rasterio.open(adj_rwa_admin_fp, "w+", **out_meta) as f:
+        f.write(img)
+
+    with rasterio.open(adj_rwa_admin_fp) as src:
+        out_meta = src.meta.copy()
+        masked_img, out_transform = mask(
+            src, rwanda_bounds.geometry, crop=True)
+    out_meta.update({"driver": "GTiff",
+                    "height": masked_img.shape[1],
+                     "width": masked_img.shape[2],
+                     "transform": out_transform})
+
+    with rasterio.open(masked_rwa_admin_fp, "w+", **out_meta) as dest:
+        dest.write(masked_img)
