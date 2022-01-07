@@ -1,6 +1,7 @@
 import json
 import os
 import os.path as path
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -13,6 +14,7 @@ from src import models
 from src.models import SimpleCNN
 from src.utils import argparser, dist
 from src.data import get_dataloaders
+from src.utils.plot import plot_and_save_training_statistics
 
 
 def train_for_an_epoch(
@@ -94,6 +96,8 @@ def run(
     dataloader_train, dataloader_validation, dataloader_test = dataloaders
     best_val_loss, best_epoch = float("inf"), -1
     best_save_fp = path.join(save_dir, "best.pt")
+    accuracies = defaultdict(list)
+    losses = defaultdict(list)
     for epoch in range(epochs):
         print(f"\nStarting epoch {epoch}")
         epoch_loss_train, acc_train, stats_train = train_for_an_epoch(
@@ -104,6 +108,8 @@ def run(
             log_interval=log_interval,
             cuda=cuda,
         )
+        accuracies["train"].append(acc_train)
+        losses["train"].append(epoch_loss_train)
         scheduler.step()
         with torch.no_grad():
             epoch_loss_validation, acc_val, stats_val = test_for_an_epoch(
@@ -112,6 +118,10 @@ def run(
             epoch_loss_test, acc_test, stats_test = test_for_an_epoch(
                 model, criterion, dataloader_test, cuda
             )
+            accuracies["validation"].append(acc_val)
+            accuracies["test"].append(acc_test)
+            losses["validation"].append(epoch_loss_validation)
+            losses["test"].append(epoch_loss_test)
         print(
             "[Train epoch {:d}] loss: {:.4f} acc: {:.2f}%".format(
                 epoch, epoch_loss_train, acc_train * 100
@@ -150,6 +160,7 @@ def run(
             best_val_loss = epoch_loss_validation
             best_epoch = epoch
             print("Save to {}".format(best_save_fp))
+        plot_and_save_training_statistics(save_dir, accuracies, losses)
 
 
 def train(args):

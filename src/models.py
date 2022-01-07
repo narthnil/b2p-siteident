@@ -27,7 +27,9 @@ class BridgeResnet(nn.Module):
 
 
 class CNNBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, max_pool=False):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride, padding, max_pool=False
+    ):
         super(CNNBlock, self).__init__()
 
         self.layer = nn.Sequential(
@@ -56,15 +58,32 @@ class ResBlock(nn.Module):
     Single residual layer.
     """
 
-    def __init__(self, in_channels, out_channels, kernel, stride, padding, num_layers, relu=nn.LeakyReLU(0.1), pool=False):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel,
+        stride,
+        padding,
+        num_layers,
+        relu=nn.LeakyReLU(0.1),
+        pool=False,
+    ):
         super(ResBlock, self).__init__()
 
-        self.initial_convolutional_layer = CNNBlock(in_channels, out_channels, kernel, stride, padding, relu)
+        self.initial_convolutional_layer = CNNBlock(
+            in_channels, out_channels, kernel, stride, padding, relu
+        )
         self.convolutional_layers = nn.ModuleList(
-            [CNNBlock(out_channels, out_channels, kernel, stride, padding, relu) for _ in range(num_layers)]
+            [
+                CNNBlock(out_channels, out_channels, kernel, stride, padding, relu)
+                for _ in range(num_layers)
+            ]
         )
 
-        self.transpose_layer = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=1, padding=0)
+        self.transpose_layer = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size=1, padding=0
+        )
         self.pool = pool
 
     def forward(self, X):
@@ -87,17 +106,38 @@ class SimpleCNN(nn.Module):
 
         self.initial_layers = nn.Sequential(
             nn.LazyConv2d(64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            CNNBlock(64, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), max_pool=True),
-            CNNBlock(128, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), max_pool=True),
-            CNNBlock(256, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), max_pool=True)
+            CNNBlock(
+                64,
+                128,
+                kernel_size=(3, 3),
+                stride=(1, 1),
+                padding=(1, 1),
+                max_pool=True,
+            ),
+            CNNBlock(
+                128,
+                256,
+                kernel_size=(3, 3),
+                stride=(1, 1),
+                padding=(1, 1),
+                max_pool=True,
+            ),
+            CNNBlock(
+                256,
+                512,
+                kernel_size=(3, 3),
+                stride=(1, 1),
+                padding=(1, 1),
+                max_pool=True,
+            ),
         )
 
         self.linear_layers = nn.Sequential(
-            nn.Linear(512, 256),
+            nn.LazyLinear(256),
             nn.ReLU(),
             nn.Linear(256, 64),
             nn.ReLU(),
-            nn.Linear(64, 2)
+            nn.Linear(64, 2),
         )
 
     def forward(self, _input: torch.Tensor):
