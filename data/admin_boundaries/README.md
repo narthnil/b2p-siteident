@@ -1,5 +1,5 @@
 # Admin boundaries
-## Data processing
+## Data processing (Mohsin Nadaf)
 
 ## Issues
 Issue 1) Balck Polygon instead of line
@@ -26,3 +26,5 @@ To solve above issue we can use to_crs() method.
    Example:
    
    pts2raster_without_tiff_file_input("Uganda_Parish.shp","Uganda_Parish.tif", 0.000277)
+   
+## Data processing (Sai Alluru)
