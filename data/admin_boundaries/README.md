@@ -1,7 +1,7 @@
 # Admin boundaries
 ## Data processing (Mohsin Nadaf)
 
-## Issues
+### Issues
 Issue 1) Balck Polygon instead of line
 
 Geometry in adminboudary is of Polygon and MultiPolygon type if we rasterize this shp file we will get block instead of line.
@@ -15,7 +15,7 @@ For Rwanda admin boundary we are getting EPGS-3857 CRS we need to convert it to 
 
 To solve above issue we can use to_crs() method.
 
-## Step by Step Process
+### Step by Step Process
 1) Use "Raster Vector Data without any tif file.ipynb" python note book
 2) call function pts2raster_without_tiff_file_input(........) to rasterize shp file
    
