@@ -23,6 +23,12 @@ To solve above issue we can use to_crs() method.
    
    pts2raster_without_tiff_file_input(InputShapeFileName, OutputTiffFileName, Resolution)
    
+   InputShapeFileName : Name of the shape file (including absolute/relative path) which we want to rasterize
+   
+   OutputTiffFileName : Name of the output file (including absolute/relative path)
+   
+   Resolution : As per Need
+   
    Example:
    
    pts2raster_without_tiff_file_input("Uganda_Parish.shp","Uganda_Parish.tif", 0.000277)
