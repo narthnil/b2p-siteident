@@ -14,9 +14,13 @@ https://tiles.wmflabs.org/osm-no-labels/${z}/${x}/${y}.png
 taken from 
 [OSM tile servers](https://wiki.openstreetmap.org/wiki/Tile_servers).
 
+For that click on `New`, add a `Name` and the URL from above.
+
+In order to see this map, drag the map from the `Browser` panel (if you don't see the browser panel, then click `View -> Panels -> Browser`) to the `Layers` panel.
+
 ## Projection
 
-Set the projection to `EPSG:4326`.
+Set the projection to `EPSG:4326`. The projection is shown in the bottom right next to the option `Render`.
 
 ## Extract image
 
