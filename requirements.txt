@@ -10,3 +10,5 @@ tqdm
 torch
 torchvision
 rtree
+gdal
+shapely
