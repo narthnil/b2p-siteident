@@ -2,11 +2,11 @@ import numpy as np
 import json
 import rasterio
 
-from src.data import TRAIN_METADATA
+from src.data import METADATA
 
 STATS = {
     "population": {"mean": [], "std": []},
-    "osm_imgs": {"mean": [], "std": []},
+    "osm_img": {"mean": [], "std": []},
     "elevation": {"mean": [], "std": []},
     "slope": {"mean": [], "std": []},
     "roads": {"mean": [], "std": []},
@@ -14,8 +14,8 @@ STATS = {
     "admin_bounds": {"mean": [], "std": []}
 }
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["population"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["population"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["population"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["population"]["fp"])
 flat_pop = np.concatenate((src1.read(1).flatten(), src2.read(1).flatten()))
 max_pop = float(np.ceil(flat_pop[flat_pop != -99999].max()))
 min_pop = float(np.floor(flat_pop[flat_pop != -99999].min()))
@@ -26,8 +26,8 @@ STATS["population"]["std"] = [float(flat_pop[flat_pop != -99999].std())]
 STATS["population"]["max"] = [max_pop]
 STATS["population"]["min"] = [min_pop]
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["osm_imgs"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Rwanda"]["osm_imgs"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["osm_img"]["fp"])
+src2 = rasterio.open(METADATA["Rwanda"]["osm_img"]["fp"])
 flat_c1 = np.concatenate((
     src1.read(1).flatten(), src2.read(1).flatten())) / 255
 flat_c2 = np.concatenate((
@@ -38,15 +38,15 @@ print("[OSM image] max: ({}, {}, {}) min: ({}, {}, {})".format(
     flat_c1.max(), flat_c2.max(), flat_c3.max(),
     flat_c1.min(), flat_c2.min(), flat_c3.min()
 ))
-STATS["osm_imgs"]["mean"] = [
+STATS["osm_img"]["mean"] = [
     float(flat_c1.mean()), float(flat_c2.mean()), float(flat_c3.mean())]
-STATS["osm_imgs"]["std"] = [
+STATS["osm_img"]["std"] = [
     float(flat_c1.std()), float(flat_c2.std()), float(flat_c3.std())]
-STATS["osm_imgs"]["max"] = [255, 255, 255]
-STATS["osm_imgs"]["min"] = [0, 0, 0]
+STATS["osm_img"]["max"] = [255, 255, 255]
+STATS["osm_img"]["min"] = [0, 0, 0]
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["elevation"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["elevation"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["elevation"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["elevation"]["fp"])
 
 mask_ele1 = src1.read(1).flatten()
 flat_ele1 = src1.read(2).flatten()
@@ -64,8 +64,8 @@ STATS["elevation"]["std"] = [float(flat_ele.std())]
 STATS["elevation"]["max"] = [255.]
 STATS["elevation"]["min"] = [0.]
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["slope"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["slope"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["slope"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["slope"]["fp"])
 mask_slo1 = src1.read(1).flatten()
 flat_slo1 = src1.read(2).flatten()
 mask_slo2 = src2.read(1).flatten()
@@ -81,8 +81,8 @@ STATS["slope"]["std"] = [float(flat_slo.std())]
 STATS["slope"]["max"] = [255.]
 STATS["slope"]["min"] = [0.]
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["roads"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["roads"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["roads"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["roads"]["fp"])
 flat_roads = np.concatenate((src1.read(1).flatten(), src2.read(1).flatten()))
 max_roads = float(flat_roads.max())
 min_roads = float(flat_roads.min())
@@ -93,8 +93,8 @@ STATS["roads"]["std"] = [float(flat_roads.std())]
 STATS["roads"]["max"] = [max_roads]
 STATS["roads"]["min"] = [min_roads]
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["waterways"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["waterways"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["waterways"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["waterways"]["fp"])
 flat_water = np.concatenate((src1.read(1).flatten(), src2.read(1).flatten()))
 max_water = float(flat_water.max())
 min_water = float(flat_water.min())
@@ -106,8 +106,8 @@ STATS["waterways"]["max"] = [max_water]
 STATS["waterways"]["min"] = [min_water]
 
 
-src1 = rasterio.open(TRAIN_METADATA["Rwanda"]["admin_bounds"]["fp"])
-src2 = rasterio.open(TRAIN_METADATA["Uganda"]["admin_bounds"]["fp"])
+src1 = rasterio.open(METADATA["Rwanda"]["admin_bounds"]["fp"])
+src2 = rasterio.open(METADATA["Uganda"]["admin_bounds"]["fp"])
 flat_admin = np.concatenate((src1.read(1).flatten(), src2.read(1).flatten()))
 flat_admin = flat_admin[flat_admin != 0.]
 flat_admin[flat_admin == 127.] = 0

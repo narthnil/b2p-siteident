@@ -26,6 +26,10 @@ def get_args(parse_args=True, add_save_dir=True):
     parser.add_argument("--local_rank", default=0, type=int,
                         help="Please ignore and do not set this argument.")
 
+    parser.add_argument("--use_several_test_samples", action="store_true")
+    parser.add_argument("--num_test_samples", default=16, type=int)
+    parser.add_argument("--test_batch_size", default=16, type=int)
+
     # log during training
     parser.add_argument(
         "--log_interval",
