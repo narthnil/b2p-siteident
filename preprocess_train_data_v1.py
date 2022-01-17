@@ -105,6 +105,7 @@ if __name__ == "__main__":
         crs=crs, columns=["geometry"]
     )
     uganda_bounds = uganda_bounds.overlay(uganda_te_bounds, how="intersection")
+    uganda_bounds.to_file("./data/ground_truth/uganda_train_bounds.geojson")
 
     rwanda_tr_lower_bounds = gpd.GeoDataFrame([
         Polygon([
