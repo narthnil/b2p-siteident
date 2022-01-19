@@ -1,17 +1,38 @@
-import os.path as path
+"""
+Data V1 splits Rwanda into 11 parts equally by its longitude. Parts 1-5 and
+7-11 are used for training, part 6 is used for validation, and Uganda is only
+used for testing.
 
+For the semi-supervised learning (ssl) version, we use the Uganda data without
+any labels.
+"""
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import rasterio
 
-from rasterio.mask import mask
 from shapely.geometry import Polygon
 
 from src.data import get_square_area
 
+THRES = 50  # meters
+CRS = "EPSG:4326"
+GDF_KWARGS = {"crs": CRS, "columns": ["geometry"]}
+
 
 def get_dfs():
+    """Reads the CSV data from Bridges To Prosperity containing bridge sites.
+
+    rwanda_df has the following columns:
+        Record ID,Site Name,GPS (Latitude),GPS (Longitude).
+
+    uganda_df has the following columns:
+        Opportunity Unique Identifier,Opportunity ID,GPS (Latitude),
+        GPS (Longitude).
+    Returns:
+        df (Tuple[DataFrame]): Tuple with Rwanda and Uganda CSV data in a
+            Pandas DataFrame each.
+
+    """
     rwanda_df = pd.read_csv(
         "./data/ground_truth/"
         "Rwanda training data_AllSitesMinusVehicleBridges_21.11.05.csv")
@@ -22,12 +43,21 @@ def get_dfs():
         "./data/ground_truth/Uganda_TrainingData_3districts_ADSK.csv")
     uganda_df.dropna(inplace=True)
     print("Number of Uganda data points: {}".format(len(uganda_df)))
-
-    return rwanda_df, uganda_df
+    df = (rwanda_df, uganda_df)
+    return df
 
 
 def get_bounds():
+    """Calculate country bounds for Rwanda and Uganda.
 
+    For Uganda, we only use the part of Uganda that has bridge sites. For
+    Rwanda the country bounds are used.
+
+    Returns:
+        bounds_dict (Dict): Dictionary with country as keys (`uganda`,
+            `rwanda`) and values are dictionaries containing the boundaries (
+            each dictionary has four keys `left`, `bottom`, `right`, `top`).
+    """
     _, uganda_df = get_dfs()
 
     lat_name = "GPS (Latitude)"
@@ -35,11 +65,14 @@ def get_bounds():
 
     bounds_dict = {c: {} for c in ["rwanda", "uganda"]}
 
+    # wrong gps coordinate in this row
     exclude_ids = ["1023076"]
+
     min_lat, max_lat = float("inf"), - float("inf")
     min_lon, max_lon = float("inf"), - float("inf")
 
-    for i, row in uganda_df.iterrows():
+    # go through data and estimate min and max latitude and longitude
+    for _, row in uganda_df.iterrows():
         if row["Opportunity Unique Identifier"] in exclude_ids:
             continue
         lat = row[lat_name]
@@ -49,11 +82,13 @@ def get_bounds():
         min_lon = min(min_lon, lon)
         max_lon = max(max_lon, lon)
 
+    # add / substract to min and max latitude and longitude each 3-arc seconds
     min_lat -= 300 / 3600
     max_lat += 300 / 3600
     min_lon -= 300 / 3600
     max_lon += 300 / 3600
 
+    # use these bounds for uganda
     bounds_dict["uganda"] = {
         "left": min_lon,
         "bottom": min_lat,
@@ -64,6 +99,7 @@ def get_bounds():
     rwanda_fp = ("./data/country_masks/rwanda_mask_1-3600.tiff")
     rwanda = rasterio.open(rwanda_fp)
 
+    # use the country bounds for rwanda
     bounds_dict["rwanda"] = {
         "left": rwanda.bounds.left,
         "bottom": rwanda.bounds.bottom,
@@ -74,6 +110,19 @@ def get_bounds():
 
 
 def get_rwanda_va_range(bounds):
+    """Getting the longitude range for Rwanda validation set.
+    We are splitting Rwanda into 11 parts. The sixth part is used for
+    validation.
+
+    Args:
+        bounds (Dict): Contains the bounds for Rwanda.
+
+    Returns:
+        val_range (Tuple): The tuple consists of two latitude values
+            representing the minimum and maximum latitude values that the
+            validation data can have.
+    """
+    # we split the country Rwanda vertically according to
     val_range = (
         bounds["rwanda"]["left"] + (
             bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 5,
@@ -83,247 +132,302 @@ def get_rwanda_va_range(bounds):
     return val_range
 
 
-if __name__ == "__main__":
-    thres = 50
+def get_polygon_gdf_from_bounds(polygon_bounds, gdf_kwargs=GDF_KWARGS):
+    """Returns a GeoDataFrame with polygon given bounds of a region.
 
+    Args:
+        polygon_bounds (Dict): Contains keys `left`, `bottom`, `right`, `top`.
+        gdf_kwargs (Dict, optional): Dictionary containing settings for
+            Coordinate Reference System (crs) and geometry.
+
+    Returns:
+        polygon_gdf (geopandas.GeoDataFrame): A GeoDataFrame with one entry
+            which is the polygon created from the bounds.
+    """
+    polygon = Polygon([
+        [polygon_bounds["left"], polygon_bounds["top"]],
+        [polygon_bounds["right"], polygon_bounds["top"]],
+        [polygon_bounds["right"], polygon_bounds["bottom"]],
+        [polygon_bounds["left"], polygon_bounds["bottom"]]])
+    polygon_gdf = gpd.GeoDataFrame([polygon], **GDF_KWARGS)
+    return polygon_gdf
+
+
+def set_split_and_min_max_vals(df: gpd.GeoDataFrame, split_name: str,
+                               lon_name: str, left_bound: float,
+                               right_bound: float):
+    """Set a name, e.g., `train`, to column `split` and set columns `min_x`
+        and `max_x` to left and right bounds.
+
+    Args:
+        df (gpd.GeoDataFrame): GeoPandasDataFrame to be edited.
+        split_name (str): The name for this split of data.
+        lon_name (str): Name of column containing the longitude.
+        left_bound (float): Left bound.
+        right_bound (float): Right bound.
+    """
+    constraint = (df[lon_name] >= left_bound) & (df[lon_name] < right_bound)
+    df.loc[constraint, "split"] = split_name
+    df.loc[constraint, "min_x"] = left_bound
+    df.loc[constraint, "max_x"] = right_bound
+    return df
+
+
+def diff(df1: gpd.GeoDataFrame, df2: gpd.GeoDataFrame):
+    """To obtain the geometries that are part of df1 but are not in df2.
+
+    Args:
+        df1 (gpd.GeoDataFrame) 
+        df2 (gpd.GeoDataFrame)
+    Returns: Difference of df1 and df2.
+    """
+    return df1.overlay(df2, how="difference").drop(["id"], axis=1)
+
+
+def intersect(df1: gpd.GeoDataFrame, df2: gpd.GeoDataFrame):
+    """To obtain the geometries that are part of df1 and df2.
+
+    Args:
+        df1 (gpd.GeoDataFrame) 
+        df2 (gpd.GeoDataFrame)
+    Returns: Intersection of df1 and df2.
+    """
+    return df1.overlay(df2, how="intersection")
+
+
+def format_neg_entries(df: gpd.GeoDataFrame, id_prefix: str, min_x: float,
+                       max_x: float, split_name: str, country: str):
+    """Formats negative entry.
+    """
+    df = df.reset_index().rename({"index": "id"}, axis=1)
+    df["id"] = df["id"].astype(str)
+    df["id"] = id_prefix + df["id"]
+    df["min_x"] = min_x
+    df["max_x"] = max_x
+    df["split"] = split_name
+    df["Country"] = country
+    return df
+
+
+if __name__ == "__main__":
     lat_name = "GPS (Latitude)"
     lon_name = "GPS (Longitude)"
-    crs = "EPSG:4326"
+
+    # get data bounds for Rwanda and Uganda
     bounds = get_bounds()
+    # get validation range for Rwanda
     va_range = get_rwanda_va_range(bounds)
 
+    # loading shape files containing country bounds
     rwanda_bounds = gpd.read_file("./data/country_masks/rwanda.shp")
     uganda_bounds = gpd.read_file("./data/country_masks/uganda.shp")
 
-    # bounds for tr, va, te
-    uganda_te_bounds = gpd.GeoDataFrame([
-        Polygon([
-            [bounds["uganda"]["left"], bounds["uganda"]["top"]],
-            [bounds["uganda"]["right"], bounds["uganda"]["top"]],
-            [bounds["uganda"]["right"], bounds["uganda"]["bottom"]],
-            [bounds["uganda"]["left"], bounds["uganda"]["bottom"]]])],
-        crs=crs, columns=["geometry"]
-    )
-    uganda_bounds = uganda_bounds.overlay(uganda_te_bounds, how="intersection")
-    uganda_bounds.to_file("./data/ground_truth/uganda_train_bounds.geojson")
+    # intersect the polygon containing all bridge data with official Uganda
+    # country bounds
+    uganda_te_bounds = get_polygon_gdf_from_bounds(bounds["uganda"])
+    uganda_te_bounds = intersect(uganda_bounds, uganda_te_bounds)
 
-    rwanda_tr_lower_bounds = gpd.GeoDataFrame([
-        Polygon([
-            [bounds["rwanda"]["left"], bounds["rwanda"]["top"]],
-            [va_range[0], bounds["rwanda"]["top"]],
-            [va_range[0], bounds["rwanda"]["bottom"]],
-            [bounds["rwanda"]["left"], bounds["rwanda"]["bottom"]]])],
-        crs=crs, columns=["geometry"]
-    )
-    rwanda_tr_lower_bounds = rwanda_tr_lower_bounds.overlay(
-        rwanda_bounds, how="intersection")
+    # intersect the polygon with the training bounds (left of the validation
+    # bounds) with the official Rwanda country bounds
+    tr_lower_bounds = {
+        "left": bounds["rwanda"]["left"], "right": va_range[0],
+        "top": bounds["rwanda"]["top"], "bottom": bounds["rwanda"]["bottom"]}
+    rwanda_tr_lower_bounds = get_polygon_gdf_from_bounds(tr_lower_bounds)
+    rwanda_tr_lower_bounds = intersect(rwanda_tr_lower_bounds, rwanda_bounds)
 
-    rwanda_va_bounds = gpd.GeoDataFrame([
-        Polygon([
-            [va_range[0], bounds["rwanda"]["top"]],
-            [va_range[1], bounds["rwanda"]["top"]],
-            [va_range[1], bounds["rwanda"]["bottom"]],
-            [va_range[0], bounds["rwanda"]["bottom"]]
-        ])], crs=crs, columns=["geometry"]
-    )
-    rwanda_va_bounds = rwanda_va_bounds.overlay(
-        rwanda_bounds, how="intersection")
+    # intersect the polygon with the validation bounds with the official Rwanda
+    # country bounds
+    va_bounds = {
+        "left": va_range[0], "right": va_range[1],
+        "top": bounds["rwanda"]["top"], "bottom": bounds["rwanda"]["bottom"]}
+    rwanda_va_bounds = get_polygon_gdf_from_bounds(va_bounds)
+    rwanda_va_bounds = intersect(rwanda_va_bounds, rwanda_bounds)
 
-    rwanda_tr_upper_bounds = gpd.GeoDataFrame([
-        Polygon([
-            [va_range[1], bounds["rwanda"]["top"]],
-            [bounds["rwanda"]["right"], bounds["rwanda"]["top"]],
-            [bounds["rwanda"]["right"], bounds["rwanda"]["bottom"]],
-            [va_range[1], bounds["rwanda"]["bottom"]]
-        ])], crs="EPSG:4326", columns=["geometry"]
-    )
-    rwanda_tr_upper_bounds = rwanda_tr_upper_bounds.overlay(
-        rwanda_bounds, how="intersection")
+    # intersect the polygon with the training bounds (right of the validation
+    # bounds) with the official Rwanda country bounds
+    tr_upper_bounds = {
+        "left": va_range[1], "right": bounds["rwanda"]["right"],
+        "top": bounds["rwanda"]["top"], "bottom": bounds["rwanda"]["bottom"]}
+    rwanda_tr_upper_bounds = get_polygon_gdf_from_bounds(tr_upper_bounds)
+    rwanda_tr_upper_bounds = intersect(rwanda_tr_upper_bounds, rwanda_bounds)
 
     for tile_size in [300, 600, 1200]:
+        # get bridge site from B2P
         rwanda_df, uganda_df = get_dfs()
 
-        pos_size = tile_size - thres
-        non_neg_size = 2 * tile_size - 50
+        pos_size = tile_size - THRES
+        non_neg_size = 2 * tile_size - THRES
         # rwanda
         recid_name = "Record ID"
-
+        # adding prefix `rw-` to every Rwanda bridge entry to make sure it's
+        # unique when combining with Uganda data
         rwanda_df[recid_name] = "rw-" + rwanda_df[recid_name]
         rwanda_df = rwanda_df.rename(columns={recid_name: "id"})
+        # drop `Site Name` column
         rwanda_df.drop(["Site Name"], inplace=True, axis=1)
-        # positive area
+        # defines the area where bridge sites can lie in
         rwanda_df["pos_polygon"] = rwanda_df.apply(
-            lambda x: Polygon(
-                get_square_area(x[lon_name], x[lat_name],
-                                square_length=pos_size)),
-            axis=1)
-        # non negative area
+            lambda x: Polygon(get_square_area(
+                x[lon_name], x[lat_name], square_length=pos_size)), axis=1)
+        # non negative area where cannot be a `negative` bridge site point
         rwanda_df["non_neg_polygon"] = rwanda_df.apply(
             lambda x: Polygon(
                 get_square_area(
                     x[lon_name], x[lat_name], square_length=non_neg_size)),
             axis=1)
 
-        rwanda_df.loc[rwanda_df[lon_name] <
-                      va_range[0], "split"] = "train_lower"
-        rwanda_df.loc[rwanda_df[lon_name] < va_range[0], "min_x"] = bounds[
-            "rwanda"]["left"]
-        rwanda_df.loc[rwanda_df[lon_name] < va_range[0], "max_x"] = va_range[0]
+        # separate rows in Rwanda bridge data into `train_lower`, `val`,
+        # `train_upper` according to bounds
+        set_split_and_min_max_vals(rwanda_df, "train_lower", lon_name,
+                                   bounds["rwanda"]["left"], va_range[0])
+        set_split_and_min_max_vals(rwanda_df, "val", lon_name,
+                                   va_range[0], va_range[1])
+        set_split_and_min_max_vals(rwanda_df, "train_upper", lon_name,
+                                   va_range[1], bounds["rwanda"]["right"])
 
-        rwanda_df.loc[(rwanda_df[lon_name] >= va_range[0]) &
-                      (rwanda_df[lon_name] < va_range[1]), "split"] = "val"
-        rwanda_df.loc[
-            (rwanda_df[lon_name] >= va_range[0]) &
-            (rwanda_df[lon_name] < va_range[1]), "min_x"] = va_range[0]
-        rwanda_df.loc[
-            (rwanda_df[lon_name] >= va_range[0]) &
-            (rwanda_df[lon_name] < va_range[1]), "max_x"] = va_range[1]
-        rwanda_df.loc[rwanda_df[lon_name] >=
-                      va_range[1], "split"] = "train_upper"
-        rwanda_df.loc[rwanda_df[lon_name] >=
-                      va_range[1], "min_x"] = va_range[1]
-        rwanda_df.loc[rwanda_df[lon_name] >= va_range[1], "max_x"] = bounds[
-            "rwanda"]["right"]
-
+        # adding prefix `ug-` to every Uganda bridge entry to make sure it's
+        # unique when combining with Rwanda data
         recid_name = "Opportunity Unique Identifier"
         uganda_df[recid_name] = "ug-" + uganda_df[recid_name]
         uganda_df = uganda_df.rename(columns={recid_name: "id"})
         uganda_df.drop(["Opportunity ID"], inplace=True, axis=1)
+
+        # defines the area where bridge sites can lie in
         uganda_df["pos_polygon"] = uganda_df.apply(
             lambda x: Polygon(get_square_area(
-                x[lon_name], x[lat_name], square_length=pos_size)),
-            axis=1)
+                x[lon_name], x[lat_name], square_length=pos_size)), axis=1)
+        # non negative area where cannot be a `negative` bridge site point
         uganda_df["non_neg_polygon"] = uganda_df.apply(
-            lambda x: Polygon(
-                get_square_area(
-                    x[lon_name], x[lat_name], square_length=non_neg_size)),
-            axis=1)
+            lambda x: Polygon(get_square_area(
+                x[lon_name], x[lat_name], square_length=non_neg_size)), axis=1)
+
         uganda_df["split"] = "test"
         uganda_df["min_x"] = bounds["uganda"]["left"]
         uganda_df["max_x"] = bounds["uganda"]["right"]
-
-        rwanda_tr_lower_df = gpd.GeoDataFrame(
+        # for each set (train_lower, val, train_upper, test), drop pos_polygon
+        # and rename non_negative_polygon to geometry
+        nn_rwanda_tr_lower = gpd.GeoDataFrame(
             rwanda_df[rwanda_df.split == "train_lower"].drop(
                 "pos_polygon", axis=1).rename(
-                    {"non_neg_polygon": "geometry"}, axis=1),
-            crs="EPSG:4326"
-        )
-        rwanda_va_df = gpd.GeoDataFrame(
+                    {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
+        nn_rwanda_va = gpd.GeoDataFrame(
             rwanda_df[rwanda_df.split == "val"].drop(
                 "pos_polygon", axis=1).rename(
-                    {"non_neg_polygon": "geometry"}, axis=1),
-            crs="EPSG:4326"
-        )
-        rwanda_tr_upper_df = gpd.GeoDataFrame(
+                    {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
+        nn_rwanda_tr_upper = gpd.GeoDataFrame(
             rwanda_df[rwanda_df.split == "train_upper"].drop(
                 "pos_polygon", axis=1).rename(
-                    {"non_neg_polygon": "geometry"}, axis=1),
-            crs="EPSG:4326"
-        )
-
-        neg_uganda_te = gpd.GeoDataFrame(
+                    {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
+        nn_uganda_te = gpd.GeoDataFrame(
             uganda_df.drop("pos_polygon", axis=1).rename(
-                {"non_neg_polygon": "geometry"}, axis=1),
-            crs="EPSG:4326"
-        )
+                {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
+
+        # the area in which center points for `negative` tiles is obtained by
+        # by calculating the geometries that are part of the bounds but are not
+        # contained in non negative geometry (== difference)
+        neg_rwanda_tr_lower = diff(rwanda_tr_lower_bounds, nn_rwanda_tr_lower)
+        neg_rwanda_va = diff(rwanda_va_bounds, nn_rwanda_va)
+        neg_rwanda_tr_upper = diff(rwanda_tr_upper_bounds, nn_rwanda_tr_upper)
+        neg_uganda_te = diff(uganda_te_bounds, nn_uganda_te)
+
+        # set countries
         rwanda_df["Country"] = "Rwanda"
         uganda_df["Country"] = "Uganda"
+        # drop non-negative polygons, rename positive polygon (pos_polygon) to
+        # geometry
+        # sampled pos_polygon represents the area where tile center points can
+        # be
         df = pd.concat([rwanda_df, uganda_df]).drop(
-            "non_neg_polygon", axis=1).rename(
-                {"pos_polygon": "geometry"}, axis=1)
+            "non_neg_polygon", axis=1).rename({"pos_polygon": "geometry"},
+                                              axis=1)
+        # create pos_neg column to denote positive and negative entries
         df["pos_neg"] = "pos"
 
-        neg_rwanda_tr_lower = rwanda_tr_lower_bounds.overlay(
-            rwanda_tr_lower_df, how="difference")
-        neg_rwanda_tr_upper = rwanda_tr_upper_bounds.overlay(
-            rwanda_tr_upper_df, how="difference")
+        # format negative entries to have unique indeces, min_x & max_x as
+        # bounds as well as naming the split and country
+        neg_rwanda_tr_lower = format_neg_entries(
+            neg_rwanda_tr_lower, "rw-neg-tr-lower-", bounds["rwanda"]["left"],
+            va_range[0], "train-lower", "Rwanda")
+        neg_rwanda_va = format_neg_entries(
+            neg_rwanda_va, "rw-neg-val-", va_range[0], va_range[1], "val",
+            "Rwanda")
+        neg_rwanda_tr_upper = format_neg_entries(
+            neg_rwanda_tr_upper, "rw-neg-tr-upper-", va_range[1],
+            bounds["rwanda"]["right"], "train-upper", "Rwanda")
+        neg_uganda_te = format_neg_entries(
+            neg_uganda_te, "ug-neg-te-", bounds["uganda"]["left"],
+            bounds["uganda"]["right"], "test", "Uganda")
 
-        neg_rwanda_tr_lower = gpd.GeoDataFrame(
-            neg_rwanda_tr_lower, crs="EPSG:4326", columns=["geometry"])
-        neg_rwanda_tr_upper = gpd.GeoDataFrame(
-            neg_rwanda_tr_upper, crs="EPSG:4326", columns=["geometry"])
-
-        neg_rwanda_tr_lower = neg_rwanda_tr_lower.reset_index().rename(
-            {"index": "id"}, axis=1)
-        neg_rwanda_tr_lower["id"] = neg_rwanda_tr_lower["id"].astype(str)
-        neg_rwanda_tr_lower["id"] = "rw-neg-tr-lower" + \
-            neg_rwanda_tr_lower["id"]
-        neg_rwanda_tr_lower["min_x"] = bounds["rwanda"]["left"]
-        neg_rwanda_tr_lower["max_x"] = va_range[0]
-        neg_rwanda_tr_lower["split"] = "train-lower"
-        neg_rwanda_tr_lower["Country"] = "Rwanda"
-
-        neg_rwanda_tr_upper = neg_rwanda_tr_upper.reset_index().rename(
-            {"index": "id"}, axis=1)
-        neg_rwanda_tr_upper["id"] = neg_rwanda_tr_upper["id"].astype(str)
-        neg_rwanda_tr_upper["id"] = "rw-neg-tr-upper" + \
-            neg_rwanda_tr_upper["id"]
-        neg_rwanda_tr_upper["min_x"] = va_range[1]
-        neg_rwanda_tr_upper["max_x"] = bounds["rwanda"]["right"]
-        neg_rwanda_tr_upper["split"] = "train-upper"
-        neg_rwanda_tr_upper["Country"] = "Rwanda"
-
-        neg_rwanda_val = rwanda_va_bounds.overlay(
-            rwanda_va_df, how="difference")
-        neg_rwanda_val = neg_rwanda_val.drop(
-            "id", axis=1).reset_index().rename({"index": "id"}, axis=1)
-        neg_rwanda_val["id"] = neg_rwanda_val["id"].astype(str)
-        neg_rwanda_val["id"] = "rw-neg-val-" + neg_rwanda_val["id"]
-        neg_rwanda_val["min_x"] = va_range[0]
-        neg_rwanda_val["max_x"] = va_range[1]
-        neg_rwanda_val["split"] = "val"
-        neg_rwanda_val["Country"] = "Rwanda"
-
-        neg_uganda_te = uganda_bounds.overlay(neg_uganda_te, how="difference")
-        neg_uganda_te = neg_uganda_te.drop(
-            "id", axis=1).reset_index().rename({"index": "id"}, axis=1)
-        neg_uganda_te["id"] = neg_uganda_te["id"].astype(str)
-        neg_uganda_te["id"] = "ug-neg-te-" + neg_uganda_te["id"]
-        neg_uganda_te["min_x"] = bounds["uganda"]["left"]
-        neg_uganda_te["max_x"] = bounds["uganda"]["right"]
-        neg_uganda_te["split"] = "test"
-        neg_uganda_te["Country"] = "Uganda"
+        # concatenate all negative entries
         negs = pd.concat([neg_rwanda_tr_lower, neg_rwanda_tr_upper,
-                          neg_rwanda_val, neg_uganda_te])
+                          neg_rwanda_va, neg_uganda_te])
         negs["pos_neg"] = "neg"
+        # concatenate positive and negative entries
         df_pos_neg = gpd.GeoDataFrame(
-            pd.concat([df, negs]).reset_index(drop=True), crs=crs)
+            pd.concat([df, negs]).reset_index(drop=True), crs=CRS)
+        # save to file
         df_pos_neg.to_file(
-            "./data/ground_truth/train_{}.geojson".format(tile_size))
+            "./data/ground_truth/train_{}_v1.geojson".format(tile_size))
 
-    rwanda_bounds = gpd.read_file("./data/country_masks/rwanda.shp")
-    base_fp = "./data/admin_boundaries/"
-    rwa_admin_fp = path.join(
-        base_fp, "Rwanda_Village_AdminBoundary_1_3600.tiff")
-    adj_rwa_admin_fp = rwa_admin_fp.replace(".tiff", "_adj.tiff")
-    masked_rwa_admin_fp = rwa_admin_fp.replace(".tiff", ".masked.tiff")
-    with rasterio.open(rwa_admin_fp) as src:
-        out_meta = src.meta.copy()
-        transform = src.transform
-        crs = src.crs
-        img = src.read(1)
-        img[img == 0] = 127
-        img = np.expand_dims(img, 0)
+    # adding indeces and splits to all country and train/val/test bounds
+    rwanda_tr_lower_bounds["id"] = "rw-tr-lo-0"
+    rwanda_tr_lower_bounds["split"] = "train"
 
-    out_meta.update({
-        "driver": "GTiff",
-        "height": img.shape[1],
-        "width": img.shape[2],
-        "transform": transform,
-        "crs": crs
-    })
+    rwanda_va_bounds["id"] = "rw-va-0"
+    rwanda_va_bounds["split"] = "val"
 
-    with rasterio.open(adj_rwa_admin_fp, "w+", **out_meta) as f:
-        f.write(img)
+    rwanda_tr_upper_bounds["id"] = "rw-tr-up-0"
+    rwanda_tr_upper_bounds["split"] = "train"
 
-    with rasterio.open(adj_rwa_admin_fp) as src:
-        out_meta = src.meta.copy()
-        masked_img, out_transform = mask(
-            src, rwanda_bounds.geometry, crop=True)
-    out_meta.update({"driver": "GTiff",
-                    "height": masked_img.shape[1],
-                     "width": masked_img.shape[2],
-                     "transform": out_transform})
+    rwanda_bounds["id"] = "rw"
+    rwanda_bounds["split"] = "all"
 
-    with rasterio.open(masked_rwa_admin_fp, "w+", **out_meta) as dest:
-        dest.write(masked_img)
+    uganda_te_bounds["id"] = "ug-te-0"
+    uganda_te_bounds["split"] = "test"
+    uganda_bounds["id"] = "ug"
+    uganda_bounds["split"] = "all"
+
+    # concatenate all Rwanda bounds
+    rw_all_bounds = pd.concat([
+        rwanda_tr_lower_bounds, rwanda_va_bounds,
+        rwanda_tr_upper_bounds, rwanda_bounds]).reset_index(drop=True)
+    rw_all_bounds["Country"] = "Rwanda"
+
+    # concatenate all Uganda bounds
+    ug_all_bounds = pd.concat([
+        uganda_te_bounds, uganda_bounds]).reset_index(drop=True)
+    ug_all_bounds["Country"] = "Uganda"
+
+    # Concat all bounds and save to file
+    all_bounds = pd.concat([rw_all_bounds, ug_all_bounds]).reset_index(
+        drop=True)
+    all_bounds.to_file(
+        "./data/ground_truth/bounds_v1.geojson".format(tile_size))
+
+    # load uganda bounds
+    uganda_bounds = gpd.read_file("./data/country_masks/uganda.shp")
+    uganda_bounds["split"] = "ssl"
+    uganda_bounds["id"] = "ug-ssl"
+    uganda_bounds["Country"] = "Uganda"
+    uganda_bounds["pos_neg"] = "all"
+
+    # go through the v1 data
+    for tile_size in [300, 600, 1200]:
+        gt_fp = "./data/ground_truth/train_{}_v1.geojson".format(tile_size)
+        # read the train data
+        with open(gt_fp) as f:
+            gdf = gpd.read_file(f)
+        gdf = pd.concat([gdf, uganda_bounds]).reset_index(drop=True)
+        gdf.to_file("./data/ground_truth/train_{}_v1_ssl.geojson".format(
+            tile_size))
+
+    # add uganda ssl to bounds
+    uganda_bounds = gpd.read_file("./data/country_masks/uganda.shp")
+    uganda_bounds["split"] = "ssl"
+    uganda_bounds["id"] = "ug-ssl"
+    uganda_bounds["Country"] = "Uganda"
+    with open("./data/ground_truth/bounds_v1.geojson") as f:
+        gdf = gpd.read_file(f)
+    gdf = pd.concat([gdf, uganda_bounds]).reset_index(drop=True)
+    gdf.to_file("./data/ground_truth/bounds_v1_ssl.geojson".format(
+        tile_size))

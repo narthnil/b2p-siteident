@@ -66,6 +66,33 @@ python preprocess_train_data_v2.py
 python calculate_stats.py
 ```
 
+## Manual handling of train data
+
+Change in `data/ground_truth/Rwanda training data_AllSitesMinusVehicleBridges_21.11.05.csv` the following rows:
+
+```
+006f100000d7JDC,Rwanda - Gikomero - 1013421,2.442831,29.49934667
+006f100000a86FN,Rwanda - Nyarurambi - 1007485,2.4724,29.5
+006f100000a86GS,Rwanda - Coko - 1007552,2.713945,29.594535
+```
+
+to
+
+```
+006f100000d7JDC,Rwanda - Gikomero - 1013421,-2.442831,29.49934667
+006f100000a86FN,Rwanda - Nyarurambi - 1007485,-2.4724,29.5
+006f100000a86GS,Rwanda - Coko - 1007552,-2.713945,29.594535
+```
+
+Remove these rows in `data/ground_truth/Uganda_TrainingData_3districts_ADSK.csv`:
+
+```
+1023076,0063Z00000ixAgR,34.466806,-82.436215
+1023313,0063Z00000iyr0b,,
+1024477,0063Z00000kcJF1,,
+1024494,0063Z00000kcREr,,
+```
+
 ## Model training
 
 ```
