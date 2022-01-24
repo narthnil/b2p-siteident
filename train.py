@@ -1,6 +1,8 @@
 import json
 import os
+import time
 import os.path as path
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -21,6 +23,7 @@ def train_for_an_epoch(
     cuda: bool = True,
     log_interval: int = None,
 ):
+    start_time = time.time()
     model.train()
     epoch_loss = 0
     num_train = 0
@@ -48,9 +51,15 @@ def train_for_an_epoch(
                                 == 0, labels == 0).sum()
         fn += torch.logical_and(torch.argmax(prediction, -1)
                                 == 0, labels == 1).sum()
+
         if log_interval is not None and i % log_interval == 0:
             print(f"Step loss: {loss.item()}")
-    return epoch_loss / num_train, acc / num_train, (tp, fp, tn, fn)
+    time_taken = time.time() - start_time
+    return (
+        float(np.round(epoch_loss / num_train, 8)),
+        float(np.round(acc.item() / num_train, 8)),
+        (tp.item(), fp.item(), tn.item(), fn.item()),
+        float(np.round(time_taken, 2)))
 
 
 def test_for_an_epoch(
@@ -60,10 +69,11 @@ def test_for_an_epoch(
     cuda: bool,
     use_several_test_samples: bool = False
 ):
+    start_time = time.time()
     model.eval()
     epoch_loss = 0
     num_test = 0
-    acc_test = 0
+    acc = 0
     tp, fp, tn, fn = 0, 0, 0, 0
     for inputs, labels in dataloader:
         if cuda:
@@ -83,7 +93,7 @@ def test_for_an_epoch(
         if use_several_test_samples:
             prediction = torch.softmax(
                 prediction.view(batch_size, num_samples, -1), -1).mean(1)
-        acc_test += (torch.argmax(prediction, -1) == labels).sum()
+        acc += (torch.argmax(prediction, -1) == labels).sum()
         tp += torch.logical_and(torch.argmax(prediction, -1)
                                 == 1, labels == 1).sum()
         fp += torch.logical_and(torch.argmax(prediction, -1)
@@ -95,7 +105,12 @@ def test_for_an_epoch(
 
         epoch_loss += loss.item() * labels.shape[0]
         num_test += labels.shape[0]
-    return epoch_loss / num_test, acc_test / num_test, (tp, fp, tn, fn)
+    time_taken = time.time() - start_time
+    return (
+        float(np.round(epoch_loss / num_test, 8)),
+        float(np.round(acc.item() / num_test, 8)),
+        (tp.item(), fp.item(), tn.item(), fn.item()),
+        float(np.round(time_taken, 2)))
 
 
 def train(
@@ -109,44 +124,39 @@ def train(
     cuda: bool = True,
     use_several_test_samples: bool = False
 ):
-    dataloader_train, dataloader_validation, dataloader_test = dataloaders
+    dataloader_train, dataloader_validation, dataloader_test, _ = dataloaders
     best_val_loss, best_epoch = float("inf"), -1
     best_save_fp = path.join(save_dir, "best.pt")
+    train_logs = [("epoch", "train_loss", "train_acc", "train_time",
+                   "val_loss", "val_acc", "val_time", "test_loss", "test_acc",
+                  "test_time", "tr_tp", "tr_fp", "tr_tn", "tr_fp", "va_tp",
+                   "va_fp", "va_tn", "va_fp", "te_tp", "te_fp", "te_tn",
+                   "te_fp")]
     for epoch in range(epochs):
         print(f"\nStarting epoch {epoch}")
-        epoch_loss_train, acc_train, stats_train = train_for_an_epoch(
-            model,
-            criterion,
-            dataloader_train,
-            optimizer,
-            log_interval=log_interval,
-            cuda=cuda,
+        loss_train, acc_train, stats_train, time_train = train_for_an_epoch(
+            model, criterion, dataloader_train, optimizer,
+            log_interval=log_interval, cuda=cuda,
         )
         with torch.no_grad():
-            epoch_loss_validation, acc_val, stats_val = test_for_an_epoch(
+            loss_val, acc_val, stats_val, time_val = test_for_an_epoch(
                 model, criterion, dataloader_validation, cuda,
                 use_several_test_samples=use_several_test_samples
             )
-            epoch_loss_test, acc_test, stats_test = test_for_an_epoch(
+            loss_test, acc_test, stats_test, time_test = test_for_an_epoch(
                 model, criterion, dataloader_test, cuda,
                 use_several_test_samples=use_several_test_samples
             )
-        print(
-            "[Train epoch {:d}] loss: {:.4f} acc: {:.2f}%".format(
-                epoch, epoch_loss_train, acc_train * 100
-            )
-        )
-        print(
-            "[Val epoch {:d}] loss: {:.4f} acc: {:.2f}%".format(
-                epoch, epoch_loss_validation, acc_val * 100
-            )
-            + " best loss: {:.4f} (epoch {})".format(best_val_loss, best_epoch)
-        )
-        print(
-            "[Test epoch {:d}] loss: {:.4f} acc: {:.2f}%".format(
-                epoch, epoch_loss_test, acc_test * 100
-            )
-        )
+        print(("[Train epoch {:d}] loss: {:.4f} acc: {:.2f}% "
+               "time: {:.1f} sec.").format(
+            epoch, loss_train, acc_train * 100, time_train))
+        print(("[Val epoch {:d}] loss: {:.4f} acc: {:.2f}% time: {:.1f} sec."
+               "best loss: {:.4f} (epoch {})").format(
+            epoch, loss_val, acc_val * 100, time_val, best_val_loss,
+            best_epoch))
+        print(("[Test epoch {:d}] loss: {:.4f} acc: {:.2f}% "
+               "time: {:.1f} sec.").format(
+            epoch, loss_test, acc_test * 100, time_test))
         print("Train confusion matrix")
         print("{:04d} (TP) {:04d} (FP)".format(stats_train[0], stats_train[1]))
         print("{:04d} (FN) {:04d} (TN)".format(stats_train[3], stats_train[2]))
@@ -156,19 +166,27 @@ def train(
         print("Test confusion matrix")
         print("{:04d} (TP) {:04d} (FP)".format(stats_test[0], stats_test[1]))
         print("{:04d} (FN) {:04d} (TN)".format(stats_test[3], stats_test[2]))
-        if epoch_loss_validation < best_val_loss:
+
+        train_log = [epoch, loss_train, acc_train, time_train, loss_val,
+                     acc_val, time_val, loss_test, acc_test,
+                     time_test]
+        train_log += list(stats_train) + list(stats_val) + list(stats_test)
+        train_logs.append(train_log)
+        if loss_val < best_val_loss:
             torch.save(
                 {
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
-                    "val_loss": epoch_loss_validation,
+                    "val_loss": loss_val,
                     "val_acc": acc_val,
                 },
                 best_save_fp,
             )
-            best_val_loss = epoch_loss_validation
+            best_val_loss = loss_val
             best_epoch = epoch
             print("Save to {}".format(best_save_fp))
+
+    return train_logs
 
 
 def main(args):
@@ -180,7 +198,7 @@ def main(args):
 
     cudnn.benchmark = True
     # model
-    model = models.BridgeResnet(model_name=args.model)
+    model = models.BridgeResnet(model_name=args.model, lazy=False)
     # loss
     criterion = nn.CrossEntropyLoss()
     # ddp, cuda
@@ -192,12 +210,15 @@ def main(args):
 
     dataloaders = get_dataloaders(
         args.batch_size, args.tile_size,
+        use_augment=not args.no_augmentation,
         use_several_test_samples=args.use_several_test_samples,
         num_test_samples=args.num_test_samples,
-        test_batch_size=args.test_batch_size)
+        test_batch_size=args.test_batch_size,
+        data_version=args.data_version
+    )
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    train(
+    train_logs = train(
         model,
         criterion,
         dataloaders,
@@ -208,6 +229,7 @@ def main(args):
         cuda=cuda,
         use_several_test_samples=args.use_several_test_samples
     )
+    return train_logs
 
 
 if __name__ == "__main__":
@@ -224,4 +246,6 @@ if __name__ == "__main__":
         os.makedirs(args.save_dir)
         with open(path.join(args.save_dir, "opts.json"), "w+") as f:
             json.dump(vars(args), f, indent=4)
-        main(args)
+        train_logs = main(args)
+        with open(path.join(args.save_dir, "train_logs.csv"), "w+") as f:
+            f.write("\n".join([",".join(map(str, l)) for l in train_logs]))
