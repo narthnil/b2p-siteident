@@ -281,7 +281,8 @@ def shift_coords(lon, lat, tile_size=300, thres=THRES):
 
 
 def sample_points_in_polygon(polygon: Polygon,
-                             num_samples: float = 1) -> List[Tuple]:
+                             num_samples: float = 1,
+                             add_padding=False) -> List[Tuple]:
     """Sample point(s) within a given polygon.
 
     This function `num_samples` samples points that lies within the bounds of a
@@ -302,10 +303,11 @@ def sample_points_in_polygon(polygon: Polygon,
     points = []
     # get boundaries (minimum and maximum latitude and longitude) of polygon
     min_x, min_y, max_x, max_y = polygon.bounds
-    min_x += 1 / 180
-    min_y += 1 / 180
-    max_x -= 1 / 180
-    max_y -= 1 / 180
+    if add_padding:
+        min_x += 1 / 180
+        min_y += 1 / 180
+        max_x -= 1 / 180
+        max_y -= 1 / 180
 
     # repeat sampling process while the number of points samples is not equal
     # `num_samples`
@@ -1051,7 +1053,8 @@ class NoLabelTileDataset(BridgeDataset):
         # get entry
         entry = self.train_gdf.iloc[0]
         # sample a point within the geometry
-        lon, lat = sample_points_in_polygon(entry.geometry)[0]
+        lon, lat = sample_points_in_polygon(
+            entry.geometry, add_padding=True)[0]
         lon_lat_list = [(lon, lat)]
         # sample until we have `num_samples` points
         while len(lon_lat_list) < self.num_samples:
