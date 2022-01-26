@@ -27,7 +27,7 @@ def get_args(parse_args=True, add_save_dir=True):
     parser.add_argument("--no_augmentation", action="store_true")
 
     parser.add_argument("--use_several_test_samples", action="store_true")
-    parser.add_argument("--num_test_samples", default=16, type=int)
+    parser.add_argument("--num_test_samples", default=32, type=int)
     parser.add_argument("--test_batch_size", default=16, type=int)
 
     # log during training
@@ -36,12 +36,13 @@ def get_args(parse_args=True, add_save_dir=True):
                               "iterations."))
 
     # training
-    parser.add_argument("--epochs", default=300, type=int,
+    parser.add_argument("--epochs", default=200, type=int,
                         help="Training epochs.")
 
     # optimizer
     parser.add_argument("--lr", default=1e-3, type=float,
                         help="Adam optimizer learning rate.")
+    parser.add_argument("--use_sgd_scheduler", action="store_true")
     # save directory
     if add_save_dir:
         parser.add_argument("--save_dir", required=True, type=str)

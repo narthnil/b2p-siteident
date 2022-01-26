@@ -135,6 +135,17 @@ STATS_FP = "./data/ground_truth/stats.json"
 THRES = 50
 
 
+def get_num_channels(data_modalities: List[str]) -> int:
+    """Returns total number of channels given data modalities
+    """
+    num_channels = 0
+    for name in data_modalities:
+        if name not in METADATA["Rwanda"]:
+            raise Exception("Data modality {} not known.".format(name))
+        num_channels += len(METADATA["Rwanda"][name]["raster_channels"])
+    return num_channels
+
+
 class UnNormalize(object):
     """Undo normalizing a tensor with a mean and standard deviation
     Normalize a Tensor with mean and standard deviation.
@@ -291,6 +302,11 @@ def sample_points_in_polygon(polygon: Polygon,
     points = []
     # get boundaries (minimum and maximum latitude and longitude) of polygon
     min_x, min_y, max_x, max_y = polygon.bounds
+    min_x += 1 / 180
+    min_y += 1 / 180
+    max_x -= 1 / 180
+    max_y -= 1 / 180
+
     # repeat sampling process while the number of points samples is not equal
     # `num_samples`
     while len(points) < num_samples:
@@ -711,7 +727,7 @@ class BridgeDataset(Dataset):
         # transform imgs
         if self.transform:
             imgs = self.transform_imgs(imgs)
-        return imgs, label
+        return imgs.float(), label
 
     def __len__(self) -> int:
         """Returns length of the dataset"""
@@ -886,7 +902,7 @@ class TestBridgeDataset(BridgeDataset):
                 images.append(imgs.unsqueeze(0))
             images = torch.cat(images, 0)
 
-        return images, label
+        return images.float(), label
 
 
 class BridgeSampler(Sampler[int]):
@@ -1041,7 +1057,7 @@ class NoLabelTileDataset(BridgeDataset):
         while len(lon_lat_list) < self.num_samples:
             lon_, lat_ = shift_coords(lon, lat)
             point = Point(lon_, lat_)
-            if self.country_bounds.contains(point):
+            if entry.geometry.contains(point):
                 lon_lat_list.append((lon_, lat_))
         # get images for the list of points
         images = []
@@ -1050,7 +1066,11 @@ class NoLabelTileDataset(BridgeDataset):
             left, bottom, right, top = get_tile_bounds(
                 lon, lat, self.tile_size)
             # get images
-            imgs = self.get_imgs(left, bottom, right, top, entry.Country)
+            try:
+                imgs = self.get_imgs(left, bottom, right, top, entry.Country)
+            except Exception as e:
+                print(e)
+                print(left, bottom, right, top)
             # augment
             if self.use_augment:
                 imgs = self.augment(imgs)
@@ -1064,7 +1084,7 @@ class NoLabelTileDataset(BridgeDataset):
         # (num_samples, channels, width, height)
         images = torch.cat(images, 0)
 
-        return images
+        return images.float()
 
 
 def worker_init_fn(worker_id):
@@ -1168,7 +1188,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
     # unlabelled dataset
     uganda_dataset = NoLabelTileDataset(
         data=train_data, data_order=data_order, data_version=data_version,
-        len_dataset=2000, num_samples=None, raster_data=train_metadata,
+        len_dataset=2000, raster_data=train_metadata,
         stats_fp=stats_fp, tile_size=tile_size, transform=transform,
         use_augment=use_augment, use_rnd_center_point=use_rnd_center_point
     )

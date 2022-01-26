@@ -11,8 +11,8 @@ import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 
 from src import models
-from src.utils import argparser, dist
-from src.data import get_dataloaders
+from src import argparser
+from src.data import get_dataloaders, get_num_channels
 
 
 def train_for_an_epoch(
@@ -120,8 +120,9 @@ def train(
     optimizer,
     epochs: int,
     save_dir: str,
-    log_interval: int = None,
     cuda: bool = True,
+    log_interval: int = None,
+    scheduler=None,
     use_several_test_samples: bool = False
 ):
     dataloader_train, dataloader_validation, dataloader_test, _ = dataloaders
@@ -129,9 +130,9 @@ def train(
     best_save_fp = path.join(save_dir, "best.pt")
     train_logs = [("epoch", "train_loss", "train_acc", "train_time",
                    "val_loss", "val_acc", "val_time", "test_loss", "test_acc",
-                  "test_time", "tr_tp", "tr_fp", "tr_tn", "tr_fp", "va_tp",
-                   "va_fp", "va_tn", "va_fp", "te_tp", "te_fp", "te_tn",
-                   "te_fp")]
+                   "test_time", "best_val_loss", "best_val_epoch", "tr_tp",
+                   "tr_fp", "tr_tn", "tr_fp", "va_tp", "va_fp", "va_tn",
+                   "va_fp", "te_tp", "te_fp", "te_tn", "te_fp")]
     for epoch in range(epochs):
         print(f"\nStarting epoch {epoch}")
         loss_train, acc_train, stats_train, time_train = train_for_an_epoch(
@@ -169,7 +170,7 @@ def train(
 
         train_log = [epoch, loss_train, acc_train, time_train, loss_val,
                      acc_val, time_val, loss_test, acc_test,
-                     time_test]
+                     time_test, best_val_loss, best_epoch]
         train_log += list(stats_train) + list(stats_val) + list(stats_test)
         train_logs.append(train_log)
         if loss_val < best_val_loss:
@@ -185,25 +186,34 @@ def train(
             best_val_loss = loss_val
             best_epoch = epoch
             print("Save to {}".format(best_save_fp))
+        if scheduler is not None:
+            scheduler.step(loss_val)
 
     return train_logs
+
+
+def fix_random_seeds(seed=31):
+    """
+    Fix random seeds.
+    """
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
 
 
 def main(args):
     # init distributed mode
     cuda = torch.cuda.is_available()
-    if cuda:
-        dist.init_distributed_mode(args)
-    dist.fix_random_seeds(args.seed, cuda=cuda)
+    fix_random_seeds(args.seed)
 
     cudnn.benchmark = True
     # model
-    model = models.BridgeResnet(model_name=args.model, lazy=False)
+    num_channels = get_num_channels(args.data_modalities)
+    model = models.BridgeResnet(
+        model_name=args.model, lazy=False, num_channels=num_channels)
     # loss
     criterion = nn.CrossEntropyLoss()
-    # ddp, cuda
-    if dist.has_batchnorms(model) and cuda:
-        model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    # cuda
     if cuda:
         model = model.cuda()
         criterion = criterion.cuda()
@@ -214,10 +224,17 @@ def main(args):
         use_several_test_samples=args.use_several_test_samples,
         num_test_samples=args.num_test_samples,
         test_batch_size=args.test_batch_size,
-        data_version=args.data_version
+        data_version=args.data_version,
+        data_order=args.data_modalities
     )
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    if args.use_sgd_scheduler:
+        optimizer = optim.SGD(
+            model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-6)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min")
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        scheduler = None
     train_logs = train(
         model,
         criterion,
@@ -225,8 +242,9 @@ def main(args):
         optimizer,
         args.epochs,
         args.save_dir,
-        log_interval=args.log_interval,
         cuda=cuda,
+        log_interval=args.log_interval,
+        scheduler=scheduler,
         use_several_test_samples=args.use_several_test_samples
     )
     return train_logs
@@ -234,7 +252,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = argparser.get_args()
-    print("git:\n  {}\n".format(dist.get_sha()))
     print("Args:")
     print(
         "\n".join("%s: %s" % (k, str(v))
