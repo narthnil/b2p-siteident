@@ -414,7 +414,7 @@ def augment_terrain_data(img: np.ndarray, index_terrain: int, loc: float = 0,
     We augment each *unique* terrain (elevation / slope) value by a randomly
     Gaussian distributed value. The same terrain value gets the same random
     number. We sort the unique terrain values and we sort the random numbers.
-    Thus, smaller terrain values gets a smaller change than larger terrain
+    Thus, smaller terrain values get a smaller change than larger terrain
     values. In this way we make sure that the relative order of terrain values
     will not be changed through the augmentation.
 
@@ -1191,7 +1191,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
     # unlabelled dataset
     uganda_dataset = NoLabelTileDataset(
         data=train_data, data_order=data_order, data_version=data_version,
-        len_dataset=2000, raster_data=train_metadata,
+        len_dataset=len(sampler_train) * 2, raster_data=train_metadata,
         stats_fp=stats_fp, tile_size=tile_size, transform=transform,
         use_augment=use_augment, use_rnd_center_point=use_rnd_center_point
     )
