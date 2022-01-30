@@ -9,7 +9,10 @@ import random
 import shutil
 import time
 
+import os.path as path
+
 import numpy as np
+import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -19,7 +22,7 @@ import torch.optim as optim
 import torch.utils.data as data
 import torch.nn.functional as F
 
-from third_party.MixMatch.utils import Bar, Logger, AverageMeter, accuracy
+from third_party.MixMatch.utils import AverageMeter, accuracy
 
 from train import get_num_channels
 from src import data, models
@@ -61,7 +64,7 @@ parser.add_argument("--model", type=str,
 
 parser.add_argument("--use_several_test_samples", action="store_true")
 parser.add_argument("--num_test_samples", default=32, type=int)
-parser.add_argument("--test_batch_size", default=32, type=int)
+parser.add_argument("--test_batch_size", default=256, type=int)
 parser.add_argument("--data_version", default="v1", type=str)
 parser.add_argument("--no_augmentation", action="store_true")
 parser.add_argument("--data_modalities", nargs="+", type=str,
@@ -85,19 +88,17 @@ np.random.seed(args.manualSeed)
 best_acc = 0  # best test accuracy
 
 VAL_LOG_FORMAT = (
-    '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
-    'Total: {total:} | Loss: {loss:.4f} | top1: {top1: .4f}')
+    '{name} ({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
+    'Total: {total:.3f}s | Loss: {loss:.4f} | top1: {top1: .4f}')
 TRAIN_LOG_FORMAT = (
     '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
-    'Total: {total:} | Loss: {loss:.4f} | '
-    'Loss_x: {loss_x:.4f} | Loss_u: {loss_u:.4f} | W: {w:.4f}')
+    'Total: {total:.3f}s | Loss: {loss:.4f} | Loss_x: {loss_x:.4f} | '
+    'Loss_u: {loss_u:.4f} | W: {w:.4f}')
 
 
 def main():
-    global best_acc
-    global best_epoch
-
     if os.path.isdir(args.out):
+        print("Save dir {} already exists.".format(args.out))
         return
     else:
         os.makedirs(args.out)
@@ -112,8 +113,8 @@ def main():
         data_order=args.data_modalities
     )
 
-    (labeled_trainloader, val_loader,
-     test_loader, unlabeled_trainloader) = dataloaders
+    (labeled_trainloader, val_loader, _,
+     unlabeled_trainloader) = dataloaders
 
     # model
     num_channels = get_num_channels(args.data_modalities)
@@ -125,50 +126,29 @@ def main():
         param.detach_()
 
     cudnn.benchmark = True
-    print('    Total params: %.2fM' % (sum(p.numel()
+    print('Total params: {:.2f}M'.format(sum(p.numel()
           for p in model.parameters()) / 1000000.0))
 
     train_criterion = SemiLoss()
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     ema_optimizer = WeightEMA(model, ema_model, alpha=args.ema_decay)
     start_epoch = 0
 
-    # Resume
-    title = 'bridge ssl train'
-    if args.resume:
-        # Load checkpoint.
-        print('==> Resuming from checkpoint..')
-        assert os.path.isfile(
-            args.resume), 'Error: no checkpoint directory found!'
-        args.out = os.path.dirname(args.resume)
-        checkpoint = torch.load(args.resume)
-        best_acc = checkpoint['best_acc']
-        best_epoch = checkpoint['epoch']
-        start_epoch = checkpoint['epoch']
-        model.load_state_dict(checkpoint['state_dict'])
-        ema_model.load_state_dict(checkpoint['ema_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        logger = Logger(os.path.join(args.out, 'log.txt'),
-                        title=title, resume=True)
-    else:
-        logger = Logger(os.path.join(args.out, 'log.txt'), title=title)
-        logger.set_names(['Epoch', 'Train Loss', 'Train Loss X',
-                          'Train Loss U', 'Train Acc.', 'Valid Loss',
-                          'Valid Acc.', 'Test Loss', 'Test Acc.', 'Best Epoch',
-                          'Best Acc.'])
-        best_acc = best_epoch = -1
+    columns = ['Epoch', 'Train Loss', 'Train Loss X', 'Train Loss U',
+               'Train Acc.', 'Valid Loss', 'Valid Acc.', 'Best Epoch',
+               'Best Acc.']
+    logs = []
+    best_acc = best_epoch = -1
+    args.finished = False
+
     with open(os.path.join(args.out, "opts.json"), "w+") as f:
         json.dump(vars(args), f, indent=4)
 
-    test_accs = []
     # Train and val
     for epoch in range(start_epoch, args.epochs):
-
-        print('\nEpoch: [%d | %d] LR: %f' %
-              (epoch + 1, args.epochs, state['lr']))
-
+        start = time.time()
         train_loss, train_loss_x, train_loss_u = train(
             labeled_trainloader, unlabeled_trainloader, model, optimizer,
             ema_optimizer, train_criterion, epoch, use_cuda)
@@ -178,14 +158,19 @@ def main():
         val_loss, val_acc = validate(
             val_loader, ema_model, criterion, use_cuda, mode='Valid Stats',
             use_several_test_samples=args.use_several_test_samples)
-        test_loss, test_acc = validate(
-            test_loader, ema_model, criterion, use_cuda, mode='Test Stats ',
-            use_several_test_samples=args.use_several_test_samples)
+        # test_loss, test_acc = validate(
+        #     test_loader, ema_model, criterion, use_cuda, mode='Test Stats ',
+        #     use_several_test_samples=args.use_several_test_samples)
 
         # append logger file
-        logger.append([epoch, train_loss, train_loss_x, train_loss_u,
-                      train_acc, val_loss, val_acc, test_loss, test_acc,
-                      best_epoch, best_acc])
+        logs.append([int(epoch), float(np.round(train_loss, 4)),
+                     float(np.round(train_loss_x, 4)),
+                     float(np.round(train_loss_u, 4)),
+                     float(np.round(train_acc, 4)),
+                     float(np.round(val_loss, 4)),
+                     float(np.round(val_acc, 4)),
+                     float(np.round(best_epoch, 4)),
+                     float(np.round(best_acc, 4))])
 
         # save model
         is_best = val_acc > best_acc
@@ -200,19 +185,19 @@ def main():
             'best_acc': best_acc,
             'optimizer': optimizer.state_dict(),
         }, is_best)
-        test_accs.append(test_acc)
-    logger.close()
+        print('Epoch: [{:d} | {:d}] LR: {:f} Total: {:.3f}s\n'.format(
+            epoch + 1, args.epochs, state['lr'], time.time() - start))
+    pd.DataFrame(logs, columns=columns).to_csv(
+        path.join(args.out, "logs.csv"), index=False)
+    args.finished = True
 
-    print('Best acc:')
-    print(best_acc)
-
-    print('Mean acc:')
-    print(np.mean(test_accs[-20:]))
+    with open(os.path.join(args.out, "opts.json"), "w+") as f:
+        json.dump(vars(args), f, indent=4)
 
 
 def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
           ema_optimizer, criterion, epoch, use_cuda):
-
+    start = time.time()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -221,23 +206,24 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
     ws = AverageMeter()
     end = time.time()
 
-    bar = Bar('Training', max=args.train_iteration)
-    labeled_train_iter = iter(labeled_trainloader)
     unlabeled_train_iter = iter(unlabeled_trainloader)
 
-    model.train()
-    for batch_idx in range(args.train_iteration):
-        try:
-            inputs_x, targets_x = labeled_train_iter.next()
-        except:
-            labeled_train_iter = iter(labeled_trainloader)
-            inputs_x, targets_x = labeled_train_iter.next()
+    def log():
+        print(TRAIN_LOG_FORMAT.format(
+            total=time.time() - start,
+            batch=batch_idx + 1,
+            size=len(labeled_trainloader),
+            data=data_time.avg,
+            bt=batch_time.avg,
+            loss=losses.avg,
+            loss_x=losses_x.avg,
+            loss_u=losses_u.avg,
+            w=ws.avg,
+        ))
 
-        try:
-            inputs_u12 = unlabeled_train_iter.next()
-        except:
-            unlabeled_train_iter = iter(unlabeled_trainloader)
-            inputs_u12 = unlabeled_train_iter.next()
+    model.train()
+    for batch_idx, (inputs_x, targets_x) in enumerate(labeled_trainloader):
+        inputs_u12 = unlabeled_train_iter.next()
         inputs_u, inputs_u2 = torch.split(inputs_u12, 1, dim=1)
         inputs_x = inputs_x.float()
         inputs_u = inputs_u.squeeze(1).float()
@@ -252,8 +238,7 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
             1, targets_x.view(-1, 1).long(), 1)
 
         if use_cuda:
-            inputs_x, targets_x = inputs_x.cuda(), targets_x.cuda(
-                non_blocking=True)
+            inputs_x, targets_x = inputs_x.cuda(), targets_x.cuda()
             inputs_u = inputs_u.cuda()
             inputs_u2 = inputs_u2.cuda()
 
@@ -296,12 +281,9 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
         logits_x = logits[0]
         logits_u = torch.cat(logits[1:], dim=0)
 
-        if logits_x.shape[0] != mixed_target[:batch_size].shape[0]:
-            import pdb
-            pdb.set_trace()
         Lx, Lu, w = criterion(logits_x, mixed_target[:batch_size], logits_u,
                               mixed_target[batch_size:],
-                              epoch * args.train_iteration + batch_idx)
+                              epoch * len(labeled_trainloader) + batch_idx)
 
         loss = Lx + w * Lu
 
@@ -322,35 +304,36 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
         end = time.time()
 
         # plot progress
-        bar.suffix = TRAIN_LOG_FORMAT.format(
-            batch=batch_idx + 1,
-            size=args.train_iteration,
-            data=data_time.avg,
-            bt=batch_time.avg,
-            total=bar.elapsed_td,
-            loss=losses.avg,
-            loss_x=losses_x.avg,
-            loss_u=losses_u.avg,
-            w=ws.avg,
-        )
-        bar.next()
-    bar.finish()
+        if (batch_idx + 1) % 5 == 0 or batch_idx == 0:
+            log()
+    log()
 
-    return (losses.avg, losses_x.avg, losses_u.avg,)
+    return (losses.avg, losses_x.avg, losses_u.avg)
 
 
 def validate(valloader, model, criterion, use_cuda, mode,
              use_several_test_samples=False):
-
+    start = time.time()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
 
+    def log():
+        print(VAL_LOG_FORMAT.format(
+            total=time.time() - start,
+            name=mode,
+            batch=batch_idx + 1,
+            size=len(valloader),
+            data=data_time.avg,
+            bt=batch_time.avg,
+            loss=losses.avg,
+            top1=top1.avg,
+        ))
+
     # switch to evaluate mode
     model.eval()
     end = time.time()
-    bar = Bar(f'{mode}', max=len(valloader))
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(valloader):
             # measure data loading time
@@ -358,8 +341,7 @@ def validate(valloader, model, criterion, use_cuda, mode,
             inputs = inputs.float()
             batch_size = inputs.shape[0]
             if use_cuda:
-                inputs, targets = inputs.cuda(), targets.cuda(
-                    non_blocking=True)
+                inputs, targets = inputs.cuda(), targets.cuda()
             if use_several_test_samples:
                 batch_size, num_samples, c, w, h = inputs.shape
                 inputs_ = inputs.view(batch_size * num_samples, c, w, h)
@@ -371,13 +353,15 @@ def validate(valloader, model, criterion, use_cuda, mode,
             # compute output
             outputs = model(inputs_)
             loss = criterion(outputs, targets_)
-
             # measure accuracy and record loss
             if use_several_test_samples:
                 outputs_ = torch.softmax(
                     outputs.view(batch_size, num_samples, -1), -1).mean(1)
+                loss = loss.view(batch_size, num_samples).mean(1).mean()
             else:
                 outputs_ = outputs
+                loss = loss.mean()
+
             prec1 = accuracy(outputs_, targets, topk=[1])[0]
             losses.update(loss.item(), batch_size)
             top1.update(prec1.item(), batch_size)
@@ -386,18 +370,7 @@ def validate(valloader, model, criterion, use_cuda, mode,
             batch_time.update(time.time() - end)
             end = time.time()
 
-            # plot progress
-            bar.suffix = VAL_LOG_FORMAT.format(
-                batch=batch_idx + 1,
-                size=len(valloader),
-                data=data_time.avg,
-                bt=batch_time.avg,
-                total=bar.elapsed_td,
-                loss=losses.avg,
-                top1=top1.avg,
-            )
-            bar.next()
-        bar.finish()
+    log()
     return (losses.avg, top1.avg)
 
 
