@@ -1057,7 +1057,8 @@ class NoLabelTileDataset(BridgeDataset):
             entry.geometry, add_padding=True)[0]
         lon_lat_list = [(lon, lat)]
         # sample until we have `num_samples` points
-        while len(lon_lat_list) < self.num_samples:
+        # have some more as backup
+        while len(lon_lat_list) < self.num_samples + 10:
             lon_, lat_ = shift_coords(lon, lat)
             point = Point(lon_, lat_)
             if entry.geometry.contains(point):
@@ -1072,8 +1073,9 @@ class NoLabelTileDataset(BridgeDataset):
             try:
                 imgs = self.get_imgs(left, bottom, right, top, entry.Country)
             except Exception as e:
-                print(e)
-                print(left, bottom, right, top)
+                print("[Warning]", e)
+                print("[Warning]", left, bottom, right, top)
+                continue
             # augment
             if self.use_augment:
                 imgs = self.augment(imgs)
@@ -1084,6 +1086,8 @@ class NoLabelTileDataset(BridgeDataset):
             if self.transform:
                 imgs = self.transform_imgs(imgs)
             images.append(imgs.unsqueeze(0))
+            if len(images) == self.num_samples:
+                break
         # (num_samples, channels, width, height)
         images = torch.cat(images, 0)
 
