@@ -38,7 +38,7 @@ if __name__ == "__main__":
         "python train_ssl.py --out {out} --model {model} --tile_size {tile} "
         "--manualSeed {seed} --use_several_test_samples "
         "--data_version {version} --lambda-u {lambdau} --ema-decay {ema} "
-        "--alpha {alpha} --gpu {gpu} | tee logs/{log}.txt"
+        "--alpha {alpha} --gpu {gpu}"
     )
     MODEL_NAME = "{model}_ema-{ema}_lmdu-{lmdu}_T-{T}_a-{a}_tile-{tile}"
     sorted_names = sorted(list(hyperparams.keys()))
