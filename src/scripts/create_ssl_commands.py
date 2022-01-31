@@ -38,7 +38,7 @@ if __name__ == "__main__":
         "python train_ssl.py --out {out} --model {model} --tile_size {tile} "
         "--manualSeed {seed} --use_several_test_samples "
         "--data_version {version} --lambda-u {lambdau} --ema-decay {ema} "
-        "--alpha {alpha} --gpu {gpu} | tee logs/{out}.txt"
+        "--alpha {alpha} --gpu {gpu} | tee logs/{log}.txt"
     )
     MODEL_NAME = "{model}_ema-{ema}_lmdu-{lmdu}_T-{T}_a-{a}_tile-{tile}"
     sorted_names = sorted(list(hyperparams.keys()))
@@ -70,7 +70,8 @@ if __name__ == "__main__":
                     lambdau=combination[sorted_names.index("lambda-u")],
                     ema=combination[sorted_names.index("ema-decay")],
                     alpha=combination[sorted_names.index("alpha")],
-                    gpu=gpu_allocation[current_job]
+                    gpu=gpu_allocation[current_job],
+                    log="{}_{}".format(model_name, version_name)
                 )
                 jobs[current_job].append(cmd)
                 current_job += 1
