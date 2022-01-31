@@ -377,10 +377,12 @@ def validate(valloader, model, criterion, use_cuda, mode,
 def save_checkpoint(state, is_best, checkpoint=args.out,
                     filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
+    print("[Save] Save model to {}".format(filepath))
     torch.save(state, filepath)
     if is_best:
-        shutil.copyfile(filepath, os.path.join(
-            checkpoint, 'model_best.pth.tar'))
+        best_fp = os.path.join(checkpoint, 'model_best.pth.tar')
+        print("[Save] Save best model to {}".format(best_fp))
+        shutil.copyfile(filepath, best_fp)
 
 
 def linear_rampup(current, rampup_length=1000):
