@@ -51,6 +51,7 @@ pip install torch==1.10.0+cpu torchvision==0.11.1+cpu -f https://download.pytorc
 
 pip install -r requirements.txt
 
+# optional
 jupyter notebook --generate-config
 ```
 
