@@ -46,8 +46,8 @@ if __name__ == "__main__":
     current_job = 0
     for data_version in ["v1", "v2"]:
         vfpath = "results/ssl-{}".format(data_version)
-        combinations = list(itertools.product(
-            *[hyperparams[k] for k in sorted_names]))
+        combinations = sorted(list(itertools.product(
+            *[hyperparams[k] for k in sorted_names])))
         # print("Number of combinations: {}".format(len(combinations)))
         for combination in combinations:
             # print(combination)
