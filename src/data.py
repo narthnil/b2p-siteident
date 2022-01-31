@@ -1066,6 +1066,7 @@ class NoLabelTileDataset(BridgeDataset):
             except Exception as e:
                 print("[Warning]", e)
                 print("[Warning]", left, bottom, right, top)
+                print("[Warning] Sample point again.")
                 continue
             lon_lat_list.append((lon, lat))
         # sample until we have `num_samples` points
@@ -1087,6 +1088,7 @@ class NoLabelTileDataset(BridgeDataset):
             except Exception as e:
                 print("[Warning]", e)
                 print("[Warning]", left, bottom, right, top)
+                print("[Warning] Use back-up sampled points.")
                 continue
             # augment
             if self.use_augment:
