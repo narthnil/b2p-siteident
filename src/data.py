@@ -1053,9 +1053,21 @@ class NoLabelTileDataset(BridgeDataset):
         # get entry
         entry = self.train_gdf.iloc[0]
         # sample a point within the geometry
-        lon, lat = sample_points_in_polygon(
-            entry.geometry, add_padding=True)[0]
-        lon_lat_list = [(lon, lat)]
+        lon_lat_list = []
+        while len(lon_lat_list) < 1:
+            lon, lat = sample_points_in_polygon(
+                entry.geometry, add_padding=True)[0]
+            # check whether the data can be loaded, if not sample again...
+            # get bounds
+            left, bottom, right, top = get_tile_bounds(
+                lon, lat, self.tile_size)
+            try:
+                imgs = self.get_imgs(left, bottom, right, top, entry.Country)
+            except Exception as e:
+                print("[Warning]", e)
+                print("[Warning]", left, bottom, right, top)
+                continue
+            lon_lat_list.append((lon, lat))
         # sample until we have `num_samples` points
         # have some more as backup
         while len(lon_lat_list) < self.num_samples + 10:
