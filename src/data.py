@@ -5,6 +5,8 @@ import numpy as np
 import geopandas as gpd
 import rasterio
 
+from scipy import ndimage
+
 import torch
 
 from rasterio import windows
@@ -740,7 +742,9 @@ class BridgeDataset(Dataset):
                 random_osm: float = 0.75,
                 random_osm_img: Tuple[float] = (0, 3),
                 random_pop: Tuple[float] = (0, 3),
-                random_slo: Tuple[float] = (0, 2)) -> np.ndarray:
+                random_slo: Tuple[float] = (0, 2),
+                rotate: bool = False,
+                random_rotate: Tuple[int] = (-30, 31)) -> np.ndarray:
         """
         Augments the images.
 
@@ -766,6 +770,10 @@ class BridgeDataset(Dataset):
         if np.random.rand() > random_fliplr:
             # flip image horizontally
             imgs = np.fliplr(imgs)
+
+        if rotate:
+            degree = np.random.randint(random_rotate[0], random_rotate[1])
+            imgs = ndimage.rotate(imgs, degree, reshape=False)
 
         INDECES = [0]
         current_ind = 0
