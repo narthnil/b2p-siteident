@@ -46,7 +46,7 @@ def do_test(save_dir, overwrite=False):
         return False
     test_stats_fp = path.join(save_dir, "test_stats.json")
     if path.isfile(test_stats_fp) and not overwrite:
-        print("{} does not exist.".format(test_stats_fp))
+        print("{} already exist.".format(test_stats_fp))
         return False
 
     return True
