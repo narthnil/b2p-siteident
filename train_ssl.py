@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from third_party.MixMatch.utils import AverageMeter, accuracy
 
 from train import get_num_channels
-from src import data, models
+from src import data, models, utils
 
 parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
 # Optimization options
@@ -81,9 +81,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 use_cuda = torch.cuda.is_available()
 
 # Random seed
-if args.manualSeed is None:
-    args.manualSeed = random.randint(1, 10000)
-np.random.seed(args.manualSeed)
+utils.fix_random_seeds(args.manualSeed)
 
 best_acc = 0  # best test accuracy
 
