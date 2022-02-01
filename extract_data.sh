@@ -42,6 +42,11 @@ for fp in /tmp/data-b2p/data/slope_elevation/*.zip; do
 done;
 rm -rf  ./data/slope_elevation/__MACOSX/
 
+# bridge type and span data
+cp /tmp/data-b2p/data/bridge_type_span_data/* ./data/bridge_type_span_data/
+rm -rf ./data/bridge_type_span_data/__MACOSX/
+
+
 rm -rf /tmp/data-b2p;
 
 # rm -f data.zip
