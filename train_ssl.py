@@ -5,7 +5,6 @@ Code adjusted from https://github.com/YU1ut/MixMatch-pytorch/train.py
 import argparse
 import json
 import os
-import random
 import shutil
 import time
 
@@ -27,64 +26,6 @@ from third_party.MixMatch.utils import AverageMeter, accuracy
 from train import get_num_channels
 from src import data, models, utils
 
-parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
-# Optimization options
-parser.add_argument('--epochs', default=300, type=int, metavar='N',
-                    help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                    help='manual epoch number (useful on restarts)')
-parser.add_argument('--batch-size', default=256, type=int, metavar='N',
-                    help='train batchsize')
-parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
-                    metavar='LR', help='initial learning rate')
-# Checkpoints
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-# Miscs
-parser.add_argument('--manualSeed', type=int, default=0, help='manual seed')
-# Device options
-parser.add_argument('--gpu', default='0', type=str,
-                    help='id(s) for CUDA_VISIBLE_DEVICES')
-# Method options
-parser.add_argument('--train-iteration', type=int, default=256,
-                    help='Number of iteration per epoch')
-parser.add_argument('--out', default='results/ssl',
-                    help='Directory to output the result')
-parser.add_argument('--alpha', default=0.75, type=float)
-parser.add_argument('--lambda-u', default=5, type=float)
-parser.add_argument('--T', default=0.5, type=float)
-parser.add_argument('--ema-decay', default=0.75, type=float)
-parser.add_argument("--tile_size", type=int,
-                    choices=[300, 600, 1200], default=1200)
-# model
-parser.add_argument("--model", type=str,
-                    choices=["resnet18", "resnet50", "resnext",
-                             "efficientnet_b2", "efficientnet_b7"],
-                    default="efficientnet_b7")
-
-parser.add_argument("--use_several_test_samples", action="store_true")
-parser.add_argument("--num_test_samples", default=32, type=int)
-parser.add_argument("--test_batch_size", default=256, type=int)
-parser.add_argument("--data_version", default="v1", type=str)
-parser.add_argument("--no_augmentation", action="store_true")
-parser.add_argument("--data_modalities", nargs="+", type=str,
-                    default=["population", "osm_img", "elevation",
-                             "slope", "roads", "waterways",
-                             "admin_bounds_qgis"])
-
-
-args = parser.parse_args()
-state = {k: v for k, v in args._get_kwargs()}
-
-# Use CUDA
-os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-use_cuda = torch.cuda.is_available()
-
-# Random seed
-utils.fix_random_seeds(args.manualSeed)
-
-best_acc = 0  # best test accuracy
-
 VAL_LOG_FORMAT = (
     '{name} ({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
     'Total: {total:.3f}s | Loss: {loss:.4f} | top1: {top1: .4f}')
@@ -95,6 +36,61 @@ TRAIN_LOG_FORMAT = (
 
 
 def main():
+    parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
+    # Optimization options
+    parser.add_argument('--epochs', default=300, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+                        help='manual epoch number (useful on restarts)')
+    parser.add_argument('--batch-size', default=256, type=int, metavar='N',
+                        help='train batchsize')
+    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
+                        metavar='LR', help='initial learning rate')
+    # Checkpoints
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: none)')
+    # Miscs
+    parser.add_argument('--manualSeed', type=int, default=0,
+                        help='manual seed')
+    # Device options
+    parser.add_argument('--gpu', default='0', type=str,
+                        help='id(s) for CUDA_VISIBLE_DEVICES')
+    # Method options
+    parser.add_argument('--train-iteration', type=int, default=256,
+                        help='Number of iteration per epoch')
+    parser.add_argument('--out', default='results/ssl',
+                        help='Directory to output the result')
+    parser.add_argument('--alpha', default=0.75, type=float)
+    parser.add_argument('--lambda-u', default=5, type=float)
+    parser.add_argument('--T', default=0.5, type=float)
+    parser.add_argument('--ema-decay', default=0.75, type=float)
+    parser.add_argument("--tile_size", type=int,
+                        choices=[300, 600, 1200], default=1200)
+    # model
+    parser.add_argument("--model", type=str,
+                        choices=["resnet18", "resnet50", "resnext",
+                                 "efficientnet_b2", "efficientnet_b7"],
+                        default="efficientnet_b7")
+
+    parser.add_argument("--use_several_test_samples", action="store_true")
+    parser.add_argument("--num_test_samples", default=32, type=int)
+    parser.add_argument("--test_batch_size", default=256, type=int)
+    parser.add_argument("--data_version", default="v1", type=str)
+    parser.add_argument("--no_augmentation", action="store_true")
+    parser.add_argument("--data_modalities", nargs="+", type=str,
+                        default=["population", "osm_img", "elevation",
+                                 "slope", "roads", "waterways",
+                                 "admin_bounds_qgis"])
+
+    args = parser.parse_args()
+    state = {k: v for k, v in args._get_kwargs()}
+
+    # Use CUDA
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    use_cuda = torch.cuda.is_available()
+
+    # Random seed
+    utils.fix_random_seeds(args.manualSeed)
     if os.path.isdir(args.out):
         print("Save dir {} already exists.".format(args.out))
         return
@@ -131,7 +127,7 @@ def main():
     criterion = nn.CrossEntropyLoss(reduction="none")
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    ema_optimizer = WeightEMA(model, ema_model, alpha=args.ema_decay)
+    ema_optimizer = WeightEMA(model, ema_model, args.lr, alpha=args.ema_decay)
     start_epoch = 0
 
     columns = ['Epoch', 'Train Loss', 'Train Loss X', 'Train Loss U',
@@ -149,7 +145,8 @@ def main():
         start = time.time()
         train_loss, train_loss_x, train_loss_u = train(
             labeled_trainloader, unlabeled_trainloader, model, optimizer,
-            ema_optimizer, train_criterion, epoch, use_cuda)
+            ema_optimizer, train_criterion, epoch, use_cuda, args.T,
+            args.alpha, args.lambda_u)
         _, train_acc = validate(
             labeled_trainloader, ema_model, criterion, use_cuda,
             mode='Train Stats')
@@ -182,7 +179,7 @@ def main():
             'acc': val_acc,
             'best_acc': best_acc,
             'optimizer': optimizer.state_dict(),
-        }, is_best)
+        }, is_best, args.out)
         print('Epoch: [{:d} | {:d}] LR: {:f} Total: {:.3f}s\n'.format(
             epoch + 1, args.epochs, state['lr'], time.time() - start))
     pd.DataFrame(logs, columns=columns).to_csv(
@@ -194,7 +191,7 @@ def main():
 
 
 def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
-          ema_optimizer, criterion, epoch, use_cuda):
+          ema_optimizer, criterion, epoch, use_cuda, T, alpha, lambda_u):
     start = time.time()
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -246,14 +243,14 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
             outputs_u2 = model(inputs_u2)
             p = (torch.softmax(outputs_u, dim=1) +
                  torch.softmax(outputs_u2, dim=1)) / 2
-            pt = p**(1 / args.T)
+            pt = p**(1 / T)
             targets_u = pt / pt.sum(dim=1, keepdim=True)
             targets_u = targets_u.detach()
         # mixup
         all_inputs = torch.cat([inputs_x, inputs_u, inputs_u2], dim=0)
         all_targets = torch.cat([targets_x, targets_u, targets_u], dim=0)
 
-        l = np.random.beta(args.alpha, args.alpha)
+        l = np.random.beta(alpha, alpha)
 
         l = max(l, 1 - l)
 
@@ -281,7 +278,8 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
 
         Lx, Lu, w = criterion(logits_x, mixed_target[:batch_size], logits_u,
                               mixed_target[batch_size:],
-                              epoch * len(labeled_trainloader) + batch_idx)
+                              epoch * len(labeled_trainloader) + batch_idx,
+                              lambda_u)
 
         loss = Lx + w * Lu
 
@@ -309,7 +307,7 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
     return (losses.avg, losses_x.avg, losses_u.avg)
 
 
-def validate(valloader, model, criterion, use_cuda, mode,
+def validate(dataloader, model, criterion, use_cuda, mode,
              use_several_test_samples=False):
     start = time.time()
     batch_time = AverageMeter()
@@ -322,7 +320,7 @@ def validate(valloader, model, criterion, use_cuda, mode,
             total=time.time() - start,
             name=mode,
             batch=batch_idx + 1,
-            size=len(valloader),
+            size=len(dataloader),
             data=data_time.avg,
             bt=batch_time.avg,
             loss=losses.avg,
@@ -333,7 +331,7 @@ def validate(valloader, model, criterion, use_cuda, mode,
     model.eval()
     end = time.time()
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(valloader):
+        for batch_idx, (inputs, targets) in enumerate(dataloader):
             # measure data loading time
             data_time.update(time.time() - end)
             inputs = inputs.float()
@@ -372,8 +370,7 @@ def validate(valloader, model, criterion, use_cuda, mode,
     return (losses.avg, top1.avg)
 
 
-def save_checkpoint(state, is_best, checkpoint=args.out,
-                    filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, checkpoint, filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
     print("[Save] Save model to {}".format(filepath))
     torch.save(state, filepath)
@@ -393,23 +390,23 @@ def linear_rampup(current, rampup_length=1000):
 
 class SemiLoss(object):
     def __call__(self, outputs_x, targets_x, outputs_u, targets_u,
-                 current_iter):
+                 current_iter, lambda_u):
         probs_u = torch.softmax(outputs_u, dim=1)
         Lx = -torch.mean(torch.sum(F.log_softmax(outputs_x,
                                                  dim=1) * targets_x, dim=1))
         Lu = torch.mean((probs_u - targets_u)**2)
 
-        return Lx, Lu, args.lambda_u * linear_rampup(current_iter)
+        return Lx, Lu, lambda_u * linear_rampup(current_iter)
 
 
 class WeightEMA(object):
-    def __init__(self, model, ema_model, alpha=0.999):
+    def __init__(self, model, ema_model, lr, alpha=0.999):
         self.model = model
         self.ema_model = ema_model
         self.alpha = alpha
         self.params = list(model.state_dict().values())
         self.ema_params = list(ema_model.state_dict().values())
-        self.wd = 0.02 * args.lr
+        self.wd = 0.02 * lr
 
         for param, ema_param in zip(self.params, self.ema_params):
             param.data.copy_(ema_param.data)
