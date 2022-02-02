@@ -94,6 +94,30 @@ Remove these rows in `data/ground_truth/Uganda_TrainingData_3districts_ADSK.csv`
 1024494,0063Z00000kcREr,,
 ```
 
+Change these rows in `data/bridge_type_span_data/data_bridge_type_span_estimation_clean.csv`
+```
+Rwanda - Coko - 1007552,006f100000a86GS,2.713945,29.594535,Feasible,Short Span (11-30m),30
+Rwanda - Kanyegenyege - 1013877,006f100000d88A3,-2.19348,-29.49645,Not feasible,Suspended,40.4
+Rwanda - Gitantu - 1013231,006f100000d75zy,2.495585,29.58301667,Feasible,Suspension,24.4
+Rwanda - Gikomero - 1013421,006f100000d7JDC,2.442831,29.49934667,Not feasible,,
+Rwanda - Nyarurambi - 1007485,006f100000a86FN,2.4724,29.5,Not feasible,Suspension,45
+Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,2.79415,29.6986,Feasible,Suspension,35
+Rwanda - Gitantu - 1013231,006f100000d75zy,2.495585,29.58301667,Feasible,Suspension,24.4
+```
+
+to
+```
+Rwanda - Coko - 1007552,006f100000a86GS,-2.713945,29.594535,Feasible,Short Span (11-30m),30
+Rwanda - Kanyegenyege - 1013877,006f100000d88A3,-2.19348,29.49645,Not feasible,Suspended,40.4
+Rwanda - Gitantu - 1013231,006f100000d75zy,-2.495585,29.58301667,Feasible,Suspension,24.4
+Rwanda - Gikomero - 1013421,006f100000d7JDC,-2.442831,29.49934667,Not feasible,,
+Rwanda - Nyarurambi - 1007485,006f100000a86FN,-2.4724,29.5,Not feasible,Suspension,45
+Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,-2.79415,29.6986,Feasible,Suspension,35
+Rwanda - Gitantu - 1013231,006f100000d75zy,-2.495585,29.58301667,Feasible,Suspension,24.4
+```
+
+
+
 ## Model training
 
 ```
