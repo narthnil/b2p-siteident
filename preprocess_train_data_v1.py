@@ -6,6 +6,7 @@ used for testing.
 For the semi-supervised learning (ssl) version, we use the Uganda data without
 any labels.
 """
+from typing import List
 import geopandas as gpd
 import pandas as pd
 import rasterio
@@ -47,7 +48,10 @@ def get_dfs():
     return df
 
 
-def get_bounds():
+def get_bounds(uganda_df: pd.DataFrame = get_dfs()[1],
+               exclude_ids: List = ["1023076"],
+               lat_name: str = "GPS (Latitude)",
+               lon_name: str = "GPS (Longitude)"):
     """Calculate country bounds for Rwanda and Uganda.
 
     For Uganda, we only use the part of Uganda that has bridge sites. For
@@ -58,15 +62,10 @@ def get_bounds():
             `rwanda`) and values are dictionaries containing the boundaries (
             each dictionary has four keys `left`, `bottom`, `right`, `top`).
     """
-    _, uganda_df = get_dfs()
-
-    lat_name = "GPS (Latitude)"
-    lon_name = "GPS (Longitude)"
 
     bounds_dict = {c: {} for c in ["rwanda", "uganda"]}
 
     # wrong gps coordinate in this row
-    exclude_ids = ["1023076"]
 
     min_lat, max_lat = float("inf"), - float("inf")
     min_lon, max_lon = float("inf"), - float("inf")
