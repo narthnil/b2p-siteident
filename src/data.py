@@ -237,29 +237,19 @@ def get_square_area(longitude: float, latitude: float,
     return corner_points
 
 
-def shift_coords(lon, lat, tile_size=300, thres=THRES):
-    """Given a tile size shift coordinates randomly within a certain threshold.
-
+def shift_coords(lon: float, lat: float, lon_shift: float, lat_shift: float):
+    """Shifts longitude and latitude.
     Args:
-        lon (float): Longitude
-        lat (float): Latitude
-        tile_size (int, optional): Tile (square) size within the coordinates
-            are being shifted.
-        thres (float, optional): Margin of tile to which the coordinates cannot
-            be shifted to.
+        lon (float): Longitude.
+        lat (float): Latitude.
+        lon_shift (float): Shift in meters.
+        lat_shift (float): Shift in meters.
 
     Return:
         new_lon (float): Shifted longitude.
         new_lat (float): Shifted latitude.
     """
     geod = Geodesic.WGS84
-    # sample from a Gaussian distribution a shift in longitude and latitude
-    # clip it by +- (tile_size - thres) / 2
-    lat_shift, lon_shift = np.clip(
-        np.random.normal(loc=0.0, scale=(tile_size - thres) / 4, size=2),
-        - (tile_size - thres) / 2,  # clip min
-        (tile_size - thres) / 2  # clip max
-    ).tolist()
     # if latitude is shifted by a negative number, the degree of shift is 180
     if lat_shift < 0:
         lat_shift_degree = 180
@@ -278,6 +268,35 @@ def shift_coords(lon, lat, tile_size=300, thres=THRES):
     # shift longitude
     lon_shifted = geod.Direct(new_lat, new_lon, lon_shift_degree, lat_shift)
     new_lat, new_lon = lon_shifted["lat2"], lon_shifted["lon2"]
+    # returns shifted longitude and latitude
+    return new_lon, new_lat
+
+
+def shift_coords_within_tile(lon, lat, tile_size=300, thres=THRES):
+    """Given a tile size shift coordinates randomly within a certain threshold.
+
+    Args:
+        lon (float): Longitude
+        lat (float): Latitude
+        tile_size (int, optional): Tile (square) size within the coordinates
+            are being shifted.
+        thres (float, optional): Margin of tile to which the coordinates cannot
+            be shifted to.
+
+    Return:
+        new_lon (float): Shifted longitude.
+        new_lat (float): Shifted latitude.
+    """
+    geod = Geodesic.WGS84
+    # sample from a Gaussian distribution a shift in longitude and latitude
+    # clip it by +- (tile_size - thres) / 2
+    lon_shift, lat_shift = np.clip(
+        np.random.normal(loc=0.0, scale=(tile_size - thres) / 4, size=2),
+        - (tile_size - thres) / 2,  # clip min
+        (tile_size - thres) / 2  # clip max
+    ).tolist()
+
+    new_lon, new_lat = shift_coords(lon, lat, lon_shift, lat_shift)
     # returns shifted longitude and latitude
     return new_lon, new_lat
 
@@ -695,7 +714,7 @@ class BridgeDataset(Dataset):
             lon, lat = entry["GPS (Longitude)"], entry["GPS (Latitude)"]
             if self.use_rnd_center_point:
                 # shift center point
-                lon, lat = shift_coords(lon, lat)
+                lon, lat = shift_coords_within_tile(lon, lat)
                 # check whether the center point is a valid point within the
                 # entry's bounds
                 if not is_valid_lonlat(entry, lon, lat, self.tile_size):
@@ -889,7 +908,7 @@ class TestBridgeDataset(BridgeDataset):
             # shift center point to have several test samples
             # (= num_test_samples) and add to `lon_lat_list`
             while len(lon_lat_list) < self.num_test_samples:
-                lon_, lat_ = shift_coords(lon, lat)
+                lon_, lat_ = shift_coords_within_tile(lon, lat)
                 point = Point(lon_, lat_)
                 if entry.geometry.contains(point):
                     lon_lat_list.append((lon_, lat_))
@@ -1080,7 +1099,7 @@ class NoLabelTileDataset(BridgeDataset):
         # sample until we have `num_samples` points
         # have some more as backup
         while len(lon_lat_list) < self.num_samples + 10:
-            lon_, lat_ = shift_coords(lon, lat)
+            lon_, lat_ = shift_coords_within_tile(lon, lat)
             point = Point(lon_, lat_)
             if entry.geometry.contains(point):
                 lon_lat_list.append((lon_, lat_))
