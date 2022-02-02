@@ -57,7 +57,7 @@ jupyter notebook --generate-config
 
 # Preprocess data
 
-Download `data.zip` from B2P Google drive and put the file into this repository [(Link to B2P, permission is required)](https://drive.google.com/drive/folders/1sbJ8xUDyGOtcmO25q7ZQwPw3uxa3wHkF?usp=sharing).
+Download `data.zip` from B2P Google drive and put the file into the root of this repository [(Link to B2P, permission is required)](https://drive.google.com/drive/folders/1sbJ8xUDyGOtcmO25q7ZQwPw3uxa3wHkF?usp=sharing).
 Use the following commands to extract the files, move them to the `./data/` folder and calculate the statistics for training.
 
 ```
@@ -70,7 +70,7 @@ python calculate_stats.py
 ## Manual handling of train data
 
 Change in `data/ground_truth/Rwanda training data_AllSitesMinusVehicleBridges_21.11.05.csv` the following rows:
-
+(line 864)
 ```
 006f100000d7JDC,Rwanda - Gikomero - 1013421,2.442831,29.49934667
 006f100000a86FN,Rwanda - Nyarurambi - 1007485,2.4724,29.5
@@ -96,13 +96,12 @@ Remove these rows in `data/ground_truth/Uganda_TrainingData_3districts_ADSK.csv`
 
 Change these rows in `data/bridge_type_span_data/data_bridge_type_span_estimation_clean.csv`
 ```
-Rwanda - Coko - 1007552,006f100000a86GS,2.713945,29.594535,Feasible,Short Span (11-30m),30
-Rwanda - Kanyegenyege - 1013877,006f100000d88A3,-2.19348,-29.49645,Not feasible,Suspended,40.4
-Rwanda - Gitantu - 1013231,006f100000d75zy,2.495585,29.58301667,Feasible,Suspension,24.4
-Rwanda - Gikomero - 1013421,006f100000d7JDC,2.442831,29.49934667,Not feasible,,
-Rwanda - Nyarurambi - 1007485,006f100000a86FN,2.4724,29.5,Not feasible,Suspension,45
-Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,2.79415,29.6986,Feasible,Suspension,35
-Rwanda - Gitantu - 1013231,006f100000d75zy,2.495585,29.58301667,Feasible,Suspension,24.4
+Rwanda - Coko - 1007552,006f100000a86GS,2.713945,29.594535,Feasible,Short Span (11-30m),30 (line 215)
+Rwanda - Kanyegenyege - 1013877,006f100000d88A3,-2.19348,-29.49645,Not feasible,Suspended,40.4 (line 913)
+Rwanda - Gitantu - 1013231,006f100000d75zy,2.495585,29.58301667,Feasible,Suspension,24.4 (line 1244)
+Rwanda - Gikomero - 1013421,006f100000d7JDC,2.442831,29.49934667,Not feasible,, (line 2008)
+Rwanda - Nyarurambi - 1007485,006f100000a86FN,2.4724,29.5,Not feasible,Suspension,45 (line 1687)
+Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,2.79415,29.6986,Feasible,Suspension,35 (line 1321)
 ```
 
 to
@@ -113,13 +112,13 @@ Rwanda - Gitantu - 1013231,006f100000d75zy,-2.495585,29.58301667,Feasible,Suspen
 Rwanda - Gikomero - 1013421,006f100000d7JDC,-2.442831,29.49934667,Not feasible,,
 Rwanda - Nyarurambi - 1007485,006f100000a86FN,-2.4724,29.5,Not feasible,Suspension,45
 Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,-2.79415,29.6986,Feasible,Suspension,35
-Rwanda - Gitantu - 1013231,006f100000d75zy,-2.495585,29.58301667,Feasible,Suspension,24.4
 ```
 
 
 
 ## Model training
-
+All training parameters can be found in `src/argparser.py`. By default, it is required to specify a unique `--save_dir` 
+(the directory to which training artifacts are saved). It is recommended to use the `results` base directory as those files will be ignored by git.
 ```
 python train.py --model resnet50 --tile_size 1200 --save_dir results/resnet50-1200
 ```
