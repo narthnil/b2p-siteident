@@ -7,7 +7,8 @@ from shapely.geometry import Point
 
 import rasterio
 
-from preprocess_train_data_v1 import get_rwanda_va_range
+from preprocess_train_data_v1 import (
+    diff, get_polygon_gdf_from_bounds, get_rwanda_va_range)
 from preprocess_train_data_v2 import get_uganda_tr_range
 
 
@@ -178,6 +179,12 @@ if __name__ == "__main__":
         len(df[df.split.str.startswith("val")]),
         len(df[df.split.str.startswith("test")])))
 
+    uganda_bounds = gpd.read_file("./data/country_masks/uganda.shp")
+    uganda_bounds["split"] = "ssl"
+    uganda_bounds["id"] = "ug-ssl"
+    uganda_bounds["Country"] = "Uganda"
+    uganda_bounds.to_file("./data/bridge_type_span_data/data_v1_ssl.geojson")
+
     # v2
     df = preprocess_data()
     bounds = get_bounds(df)
@@ -212,3 +219,10 @@ if __name__ == "__main__":
         len(df[df.split.str.startswith("train")]),
         len(df[df.split.str.startswith("val")]),
         len(df[df.split.str.startswith("test")])))
+
+    uganda_tr_va_te_bounds = get_polygon_gdf_from_bounds(bounds["uganda"])
+    uganda_ssl_bounds = diff(uganda_bounds, uganda_tr_va_te_bounds)
+    uganda_ssl_bounds["split"] = "ssl"
+    uganda_ssl_bounds["id"] = "ug-ssl"
+    uganda_ssl_bounds["Country"] = "Uganda"
+    uganda_bounds.to_file("./data/bridge_type_span_data/data_v2_ssl.geojson")
