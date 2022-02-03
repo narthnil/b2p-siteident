@@ -35,11 +35,7 @@ def train_for_an_epoch(
             labels = labels.long().cuda()
 
         prediction = model(inputs)
-        print(prediction)
         loss = criterion(prediction, labels)
-        print(loss)
-        print(labels)
-        1/0
 
         optimizer.zero_grad()
         loss.backward()
