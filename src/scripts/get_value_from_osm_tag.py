@@ -64,7 +64,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", type=str, required=True, help="OSM data source")
+    parser.add_argument(
+        "--source",
+        type=str,
+        required=True,
+        help="OSM data source")
     parser.add_argument(
         "--country",
         type=str,

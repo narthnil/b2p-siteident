@@ -13,7 +13,7 @@ import rasterio
 
 from shapely.geometry import Polygon
 
-from src.data import get_square_area
+from src.data import geometry
 
 THRES = 50  # meters
 CRS = "EPSG:4326"
@@ -266,12 +266,12 @@ if __name__ == "__main__":
         rwanda_df.drop(["Site Name"], inplace=True, axis=1)
         # defines the area where bridge sites can lie in
         rwanda_df["pos_polygon"] = rwanda_df.apply(
-            lambda x: Polygon(get_square_area(
+            lambda x: Polygon(geometry.get_square_area(
                 x[lon_name], x[lat_name], square_length=pos_size)), axis=1)
         # non negative area where cannot be a `negative` bridge site point
         rwanda_df["non_neg_polygon"] = rwanda_df.apply(
             lambda x: Polygon(
-                get_square_area(
+                geometry.get_square_area(
                     x[lon_name], x[lat_name], square_length=non_neg_size)),
             axis=1)
 
@@ -293,11 +293,11 @@ if __name__ == "__main__":
 
         # defines the area where bridge sites can lie in
         uganda_df["pos_polygon"] = uganda_df.apply(
-            lambda x: Polygon(get_square_area(
+            lambda x: Polygon(geometry.get_square_area(
                 x[lon_name], x[lat_name], square_length=pos_size)), axis=1)
         # non negative area where cannot be a `negative` bridge site point
         uganda_df["non_neg_polygon"] = uganda_df.apply(
-            lambda x: Polygon(get_square_area(
+            lambda x: Polygon(geometry.get_square_area(
                 x[lon_name], x[lat_name], square_length=non_neg_size)), axis=1)
 
         uganda_df["split"] = "test"
