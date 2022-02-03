@@ -148,6 +148,15 @@ def get_num_channels(data_modalities: List[str]) -> int:
     return num_channels
 
 
+def map_indices_to_modalities(data_modalities: List[str]) -> List[str]:
+    modality_channel = []
+    for modality in data_modalities:
+        num_channels = len(METADATA["Rwanda"][modality]["raster_channels"])
+        for _ in range(num_channels):
+            modality_channel.append(modality)
+    return modality_channel
+
+
 class UnNormalize(object):
     """Undo normalizing a tensor with a mean and standard deviation
     Normalize a Tensor with mean and standard deviation.
@@ -343,7 +352,7 @@ def sample_points_in_polygon(polygon: Polygon,
     return points
 
 
-def get_tile_bounds(lon: float, lat: float, tile_size: int) -> Tuple[float]:
+def get_tile_bounds(lon: float, lat: float, tile_size: int) -> Tuple[float, float, float, float]:
     """Get tile bounds given center points (latitude, longitude) and tile size
 
     Args:
@@ -700,6 +709,22 @@ class BridgeDataset(Dataset):
         # transform
         imgs = self.transform_func(imgs)
         return imgs
+
+    def get_item_from_lon_lat(self, lon: float, lat: float, country: str):
+        left, bottom, right, top = get_tile_bounds(lon, lat, self.tile_size)
+        # get images based on tile bounds
+        imgs = self.get_imgs(left, bottom, right, top, country)
+        # use augmentation
+        if self.use_augment:
+            imgs = self.augment(imgs)
+        # imgs of shape (#data modalities, h, w)
+        imgs = torch.from_numpy(imgs.copy()).permute(2, 0, 1)
+        # transform imgs
+        if self.transform:
+            imgs = self.transform_imgs(imgs)
+        bridges_in_bounds = self.train_gdf.cx[left:right, bottom:top]
+        label = 0 if len(bridges_in_bounds) == 0 else 1
+        return torch.unsqueeze(imgs.float(), 0), label
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor]:
         """Get images and label based on index"""
