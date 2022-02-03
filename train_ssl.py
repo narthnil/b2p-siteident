@@ -18,13 +18,12 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
-import torch.utils.data as data
 import torch.nn.functional as F
 
-from third_party.MixMatch.utils import AverageMeter, accuracy
+from src.utils import AverageMeter, accuracy
 
-from train import get_num_channels
-from src import data, models, utils
+from src import models, utils
+from src.data import bridge_site
 
 VAL_LOG_FORMAT = (
     '{name} ({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
@@ -97,7 +96,7 @@ def main():
     else:
         os.makedirs(args.out)
 
-    dataloaders = data.get_dataloaders(
+    dataloaders = bridge_site.get_dataloaders(
         args.batch_size, args.tile_size,
         use_augment=not args.no_augmentation,
         use_several_test_samples=args.use_several_test_samples,
@@ -111,7 +110,7 @@ def main():
      unlabeled_trainloader) = dataloaders
 
     # model
-    num_channels = get_num_channels(args.data_modalities)
+    num_channels = bridge_site.get_num_channels(args.data_modalities)
     model = models.BridgeResnet(
         model_name=args.model, lazy=False, num_channels=num_channels).cuda()
     ema_model = models.BridgeResnet(

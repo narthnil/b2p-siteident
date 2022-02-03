@@ -14,12 +14,9 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
 from src import models
-from train import get_num_channels
 from train_ssl import VAL_LOG_FORMAT
-
-from src.data import get_dataloaders
-
-from third_party.MixMatch.utils import AverageMeter, accuracy
+from src.utils import AverageMeter, accuracy
+from src.data.bridge_site import get_dataloaders, get_num_channels
 
 
 def do_test(save_dir, overwrite=False):

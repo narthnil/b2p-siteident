@@ -1,6 +1,6 @@
 # B2P Remote Trailbridge Needs Assessment
 
-## Install GDAL (OS X, Ubuntu)
+## Install GDAL (MacOS, Ubuntu)
 
 ### Install Anaconda environment
 
@@ -61,7 +61,7 @@ Download `data.zip` from B2P Google drive and put the file into the root of this
 Use the following commands to extract the files, move them to the `./data/` folder and calculate the statistics for training.
 
 ```
-bash extract_data.sh
+bash src/scripts/extract_data.sh
 python preprocess_train_data_v1.py
 python preprocess_train_data_v2.py
 python calculate_stats.py
@@ -114,13 +114,20 @@ Rwanda - Nyarurambi - 1007485,006f100000a86FN,-2.4724,29.5,Not feasible,Suspensi
 Rwanda - Ryakanyamiganda - 1007580,006f100000a86Gu,-2.79415,29.6986,Feasible,Suspension,35
 ```
 
-
-
 ## Model training
 All training parameters can be found in `src/argparser.py`. By default, it is required to specify a unique `--save_dir` 
 (the directory to which training artifacts are saved). It is recommended to use the `results` base directory as those files will be ignored by git.
+
+Supervised training:
+
 ```
 python train.py --model resnet50 --tile_size 1200 --save_dir results/resnet50-1200
+```
+
+Semi-supervised training:
+
+```
+python train_ssl.py --model resnet18 --tile_size 300 --out results/ssl-resnet50-300
 ```
 
 ## Rasterizing Vector Geometry using QGIS

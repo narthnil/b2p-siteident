@@ -5,18 +5,18 @@ import numpy as np
 import geopandas as gpd
 import rasterio
 
+from rasterio import windows
 from scipy import ndimage
+from torchvision import transforms
+from typing import Dict, List, Tuple, Iterator
+
+from shapely.geometry import Point
 
 import torch
 
-from rasterio import windows
-from typing import Dict, List, Tuple, Iterator
-from torchvision import transforms
-
-from geographiclib.geodesic import Geodesic
-from shapely.geometry import Point, Polygon
-
 from torch.utils.data import Dataset, Sampler, DataLoader
+
+from src.data import transforms as data_transf, augment, geometry, utils
 
 
 # key is the tile size (300, 600 or 1200m) and values are tuples representing
@@ -148,6 +148,7 @@ def get_num_channels(data_modalities: List[str]) -> int:
     return num_channels
 
 
+<<<<<<< HEAD:src/data.py
 def map_indices_to_modalities(data_modalities: List[str]) -> List[str]:
     modality_channel = []
     for modality in data_modalities:
@@ -547,6 +548,8 @@ def augment_binary_map(img: np.ndarray, index_map: int,
     return img
 
 
+=======
+>>>>>>> Changed src.data module into several submodules, added train bridge type script:src/data/bridge_site.py
 class BridgeDataset(Dataset):
     """Dataset module to load all TIF-based data from file and extract tiles.
     """
@@ -613,7 +616,7 @@ class BridgeDataset(Dataset):
 
         # normalization function
         self.transform_func = transforms.Compose([
-            Normalize(
+            data_transf.Normalize(
                 list(itertools.chain(
                     *[self.stats[name]["mean"] for name in self.data_order])),
                 list(itertools.chain(
@@ -622,7 +625,7 @@ class BridgeDataset(Dataset):
         ])
         # undo normalization function
         self.invert_transform_func = transforms.Compose([
-            UnNormalize(
+            data_transf.UnNormalize(
                 list(itertools.chain(
                     *[self.stats[name]["mean"] for name in self.data_order])),
                 list(itertools.chain(
@@ -739,10 +742,12 @@ class BridgeDataset(Dataset):
             lon, lat = entry["GPS (Longitude)"], entry["GPS (Latitude)"]
             if self.use_rnd_center_point:
                 # shift center point
-                lon, lat = shift_coords_within_tile(lon, lat)
+                lon, lat = geometry.shift_coords_within_tile(
+                    lon, lat, thres=THRES)
                 # check whether the center point is a valid point within the
                 # entry's bounds
-                if not is_valid_lonlat(entry, lon, lat, self.tile_size):
+                if not geometry.is_valid_lonlat(
+                        entry, lon, lat, self.tile_size):
                     lon, lat = entry[
                         "GPS (Longitude)"], entry["GPS (Latitude)"]
         # negative (= no bridge site)
@@ -755,16 +760,17 @@ class BridgeDataset(Dataset):
             while num_tries < max_num_tries and valid_point is False:
                 num_tries += 1
                 # sample a random center point within the negative area
-                lon, lat = sample_points_in_polygon(entry.geometry)[0]
+                lon, lat = geometry.sample_points_in_polygon(entry.geometry)[0]
                 # check whether the center point is a valid point within the
                 # entry's bounds
-                if is_valid_lonlat(entry, lon, lat, self.tile_size):
+                if geometry.is_valid_lonlat(entry, lon, lat, self.tile_size):
                     valid_point = True
         else:
             raise NotImplementedError
 
         # get tile bounds
-        left, bottom, right, top = get_tile_bounds(lon, lat, self.tile_size)
+        left, bottom, right, top = geometry.get_tile_bounds(
+            lon, lat, self.tile_size)
         # get images based on tile bounds
         imgs = self.get_imgs(left, bottom, right, top, country)
         # use augmentation
@@ -827,44 +833,44 @@ class BridgeDataset(Dataset):
 
         if "population" in self.data_order:
             # augment population
-            imgs = augment_pop_data(
+            imgs = augment.augment_pop_data(
                 imgs, INDECES[self.data_order.index("population")],
                 self.stats["population"], loc=random_pop[0],
                 scale=random_pop[1])
 
         if "elevation" in self.data_order:
             # augment elevation
-            imgs = augment_terrain_data(
+            imgs = augment.augment_terrain_data(
                 imgs, INDECES[self.data_order.index(
                     "elevation")], loc=random_ele[0], scale=random_ele[1])
 
         if "slope" in self.data_order:
             # augment slope
-            imgs = augment_terrain_data(
+            imgs = augment.augment_terrain_data(
                 imgs, INDECES[self.data_order.index("slope")],
                 loc=random_slo[0], scale=random_slo[1])
 
         # augment osm img
         if "osm_img" in self.data_order:
-            augment_osm_img(
+            augment.augment_osm_img(
                 imgs, INDECES[self.data_order.index("osm_img")],
                 loc=random_osm_img[0], scale=random_osm_img[1])
 
         if "roads" in self.data_order:
             # augment roads
-            imgs = augment_binary_map(
+            imgs = augment.augment_binary_map(
                 imgs, INDECES[self.data_order.index("roads")],
                 p_reject=random_osm)
 
         if "waterways" in self.data_order:
             # augment waterways
-            imgs = augment_binary_map(
+            imgs = augment.augment_binary_map(
                 imgs, INDECES[self.data_order.index("waterways")],
                 p_reject=random_osm)
 
         if "admin_bounds" in self.data_order:
             # augment admin boundaries
-            imgs = augment_binary_map(
+            imgs = augment.augment_binary_map(
                 imgs, INDECES[self.data_order.index("admin_bounds")],
                 p_reject=random_admin)
 
@@ -928,19 +934,20 @@ class TestBridgeDataset(BridgeDataset):
             label = 0
             images = []
             # sample a center point
-            lon, lat = sample_points_in_polygon(entry.geometry)[0]
+            lon, lat = geometry.sample_points_in_polygon(entry.geometry)[0]
             lon_lat_list = [(lon, lat)]
             # shift center point to have several test samples
             # (= num_test_samples) and add to `lon_lat_list`
             while len(lon_lat_list) < self.num_test_samples:
-                lon_, lat_ = shift_coords_within_tile(lon, lat)
+                lon_, lat_ = geometry.shift_coords_within_tile(
+                    lon, lat, thres=THRES)
                 point = Point(lon_, lat_)
                 if entry.geometry.contains(point):
                     lon_lat_list.append((lon_, lat_))
             # for each point in `lon_lat_list`
             for lon, lat in lon_lat_list:
                 # get tile bounds
-                left, bottom, right, top = get_tile_bounds(
+                left, bottom, right, top = geometry.get_tile_bounds(
                     lon, lat, self.tile_size)
                 # get images from the bounds
                 imgs = self.get_imgs(left, bottom, right, top, entry.Country)
@@ -1054,6 +1061,7 @@ class BridgeSampler(Sampler[int]):
 
 
 class NoLabelTileDataset(BridgeDataset):
+    """Tile dataset without any labels."""
 
     def __init__(self, data: Dict = TRAIN_DATA,
                  data_order: List[str] = DATA_ORDER, data_version: str = "v1",
@@ -1107,11 +1115,11 @@ class NoLabelTileDataset(BridgeDataset):
         # sample a point within the geometry
         lon_lat_list = []
         while len(lon_lat_list) < 1:
-            lon, lat = sample_points_in_polygon(
+            lon, lat = geometry.sample_points_in_polygon(
                 entry.geometry, add_padding=True)[0]
             # check whether the data can be loaded, if not sample again...
             # get bounds
-            left, bottom, right, top = get_tile_bounds(
+            left, bottom, right, top = geometry.get_tile_bounds(
                 lon, lat, self.tile_size)
             try:
                 imgs = self.get_imgs(left, bottom, right, top, entry.Country)
@@ -1124,7 +1132,8 @@ class NoLabelTileDataset(BridgeDataset):
         # sample until we have `num_samples` points
         # have some more as backup
         while len(lon_lat_list) < self.num_samples + 10:
-            lon_, lat_ = shift_coords_within_tile(lon, lat)
+            lon_, lat_ = geometry.shift_coords_within_tile(
+                lon, lat, thres=THRES)
             point = Point(lon_, lat_)
             if entry.geometry.contains(point):
                 lon_lat_list.append((lon_, lat_))
@@ -1132,7 +1141,7 @@ class NoLabelTileDataset(BridgeDataset):
         images = []
         for lon, lat in lon_lat_list:
             # get bounds
-            left, bottom, right, top = get_tile_bounds(
+            left, bottom, right, top = geometry.get_tile_bounds(
                 lon, lat, self.tile_size)
             # get images
             try:
@@ -1160,20 +1169,17 @@ class NoLabelTileDataset(BridgeDataset):
         return images.float()
 
 
-def worker_init_fn(worker_id):
-    """Set seed for dataloader"""
-    np.random.seed(np.random.get_state()[1][0] + worker_id)
-
-
 def get_dataloaders(batch_size: int, tile_size: int,
-                    data_version: str = "v1", data_order: List = DATA_ORDER,
+                    data_version: str = "v1",
+                    data_order: List = DATA_ORDER,
                     num_test_samples: int = 64, num_workers: int = 0,
                     stats_fp: str = STATS_FP, test_batch_size: int = 10,
                     transform: bool = True, train_data: str = TRAIN_DATA,
-                    train_metadata: str = METADATA, use_augment: bool = True,
+                    train_metadata: str = METADATA,
+                    use_augment: bool = True,
                     use_rnd_center_point: bool = True,
                     use_several_test_samples: bool = False) -> Tuple[
-                        DataLoader, DataLoader]:
+        DataLoader, DataLoader]:
     """Returns dataloaders for training and evaluation.
 
         Args:
@@ -1244,7 +1250,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
 
     # dataloaders
     common_loader_kwargs = {
-        "worker_init_fn": worker_init_fn,
+        "worker_init_fn": utils.worker_init_fn,
         "num_workers": num_workers
     }
     te_batch_size = test_batch_size if use_several_test_samples else batch_size
