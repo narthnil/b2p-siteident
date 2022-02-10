@@ -13,7 +13,12 @@ import torch.nn as nn
 
 import torch.backends.cudnn as cudnn
 
+<<<<<<< Updated upstream
 from src import models
+=======
+from src import models, utils
+from train import get_num_channels
+>>>>>>> Stashed changes
 from train_ssl import VAL_LOG_FORMAT
 from src.utils import AverageMeter, accuracy
 from src.data.bridge_site import get_dataloaders, get_num_channels
@@ -130,6 +135,8 @@ def main(args):
     opts_fp = path.join(args.save_dir, "opts.json")
     with open(opts_fp, "r") as f:
         model_args = json.load(f)
+
+    utils.fix_random_seeds(args.manualSeed)
 
     # get the model
     num_channels = get_num_channels(model_args["data_modalities"])

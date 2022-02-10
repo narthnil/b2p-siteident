@@ -73,7 +73,7 @@ def main():
 
     parser.add_argument("--use_several_test_samples", action="store_true")
     parser.add_argument("--num_test_samples", default=32, type=int)
-    parser.add_argument("--test_batch_size", default=256, type=int)
+    parser.add_argument("--test_batch_size", default=32, type=int)
     parser.add_argument("--data_version", default="v1", type=str)
     parser.add_argument("--no_augmentation", action="store_true")
     parser.add_argument("--data_modalities", nargs="+", type=str,

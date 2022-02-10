@@ -148,5 +148,7 @@ data/*/*/*.zip
 # vscode
 launch.json
 
-results/
-# scripts/
+results*/
+scripts/
+
+data.zip

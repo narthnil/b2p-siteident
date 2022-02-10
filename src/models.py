@@ -22,7 +22,7 @@ class BridgeResnet(nn.Module):
         elif model_name == "efficientnet_b2":
             self.model = models.efficientnet_b2(pretrained=pretrained)
         elif model_name == "efficientnet_b7":
-            self.model = models.efficientnet_b2(pretrained=pretrained)
+            self.model = models.efficientnet_b7(pretrained=pretrained)
         else:
             raise NotImplementedError
         if lazy and not model_name.startswith("efficientnet"):

@@ -190,5 +190,5 @@ if __name__ == "__main__":
     STATS["admin_bounds_gadm"]["min"] = [0.]
 
     # save to json file
-    with open("data/ground_truth/stats.json", "w+") as f:
-        json.dump(STATS, f, indent=4)
+    # with open("data/ground_truth/stats.json", "w+") as f:
+    #     json.dump(STATS, f, indent=4)
