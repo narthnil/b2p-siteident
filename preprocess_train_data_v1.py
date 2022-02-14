@@ -124,9 +124,32 @@ def get_rwanda_va_range(bounds):
     # we split the country Rwanda vertically according to
     val_range = (
         bounds["rwanda"]["left"] + (
+            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 3,
+        bounds["rwanda"]["left"] + (
+            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 5
+    )
+    return val_range
+
+
+def get_rwanda_te_range(bounds):
+    """Getting the longitude range for Rwanda validation set.
+    We are splitting Rwanda into 11 parts. The sixth part is used for
+    validation.
+
+    Args:
+        bounds (Dict): Contains the bounds for Rwanda.
+
+    Returns:
+        val_range (Tuple): The tuple consists of two latitude values
+            representing the minimum and maximum latitude values that the
+            validation data can have.
+    """
+    # we split the country Rwanda vertically according to
+    val_range = (
+        bounds["rwanda"]["left"] + (
             bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 5,
         bounds["rwanda"]["left"] + (
-            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 6
+            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 8
     )
     return val_range
 
@@ -216,6 +239,7 @@ if __name__ == "__main__":
     bounds = get_bounds()
     # get validation range for Rwanda
     va_range = get_rwanda_va_range(bounds)
+    te_range = get_rwanda_te_range(bounds)
 
     # loading shape files containing country bounds
     rwanda_bounds = gpd.read_file("./data/country_masks/rwanda.shp")
@@ -242,10 +266,18 @@ if __name__ == "__main__":
     rwanda_va_bounds = get_polygon_gdf_from_bounds(va_bounds)
     rwanda_va_bounds = intersect(rwanda_va_bounds, rwanda_bounds)
 
-    # intersect the polygon with the training bounds (right of the validation
+    # intersect the polygon with the test bounds with the official Rwanda
+    # country bounds
+    rw_te_bounds = {
+        "left": te_range[0], "right": te_range[1],
+        "top": bounds["rwanda"]["top"], "bottom": bounds["rwanda"]["bottom"]}
+    rwanda_te_bounds = get_polygon_gdf_from_bounds(rw_te_bounds)
+    rwanda_te_bounds = intersect(rwanda_te_bounds, rwanda_bounds)
+
+    # intersect the polygon with the training bounds (right of the test
     # bounds) with the official Rwanda country bounds
     tr_upper_bounds = {
-        "left": va_range[1], "right": bounds["rwanda"]["right"],
+        "left": te_range[1], "right": bounds["rwanda"]["right"],
         "top": bounds["rwanda"]["top"], "bottom": bounds["rwanda"]["bottom"]}
     rwanda_tr_upper_bounds = get_polygon_gdf_from_bounds(tr_upper_bounds)
     rwanda_tr_upper_bounds = intersect(rwanda_tr_upper_bounds, rwanda_bounds)
@@ -281,8 +313,10 @@ if __name__ == "__main__":
                                    bounds["rwanda"]["left"], va_range[0])
         set_split_and_min_max_vals(rwanda_df, "val", lon_name,
                                    va_range[0], va_range[1])
+        set_split_and_min_max_vals(rwanda_df, "test", lon_name,
+                                   te_range[0], te_range[1])
         set_split_and_min_max_vals(rwanda_df, "train_upper", lon_name,
-                                   va_range[1], bounds["rwanda"]["right"])
+                                   te_range[1], bounds["rwanda"]["right"])
 
         # adding prefix `ug-` to every Uganda bridge entry to make sure it's
         # unique when combining with Rwanda data
@@ -313,6 +347,10 @@ if __name__ == "__main__":
             rwanda_df[rwanda_df.split == "val"].drop(
                 "pos_polygon", axis=1).rename(
                     {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
+        nn_rwanda_te = gpd.GeoDataFrame(
+            rwanda_df[rwanda_df.split == "test"].drop(
+                "pos_polygon", axis=1).rename(
+                    {"non_neg_polygon": "geometry"}, axis=1), crs=CRS)
         nn_rwanda_tr_upper = gpd.GeoDataFrame(
             rwanda_df[rwanda_df.split == "train_upper"].drop(
                 "pos_polygon", axis=1).rename(
@@ -326,6 +364,7 @@ if __name__ == "__main__":
         # contained in non negative geometry (== difference)
         neg_rwanda_tr_lower = diff(rwanda_tr_lower_bounds, nn_rwanda_tr_lower)
         neg_rwanda_va = diff(rwanda_va_bounds, nn_rwanda_va)
+        neg_rwanda_te = diff(rwanda_va_bounds, nn_rwanda_te)
         neg_rwanda_tr_upper = diff(rwanda_tr_upper_bounds, nn_rwanda_tr_upper)
         neg_uganda_te = diff(uganda_te_bounds, nn_uganda_te)
 
@@ -350,6 +389,9 @@ if __name__ == "__main__":
         neg_rwanda_va = format_neg_entries(
             neg_rwanda_va, "rw-neg-val-", va_range[0], va_range[1], "val",
             "Rwanda")
+        neg_rwanda_te = format_neg_entries(
+            neg_rwanda_te, "rw-neg-te-", te_range[0], te_range[1], "test",
+            "Rwanda")
         neg_rwanda_tr_upper = format_neg_entries(
             neg_rwanda_tr_upper, "rw-neg-tr-upper-", va_range[1],
             bounds["rwanda"]["right"], "train-upper", "Rwanda")
@@ -359,7 +401,7 @@ if __name__ == "__main__":
 
         # concatenate all negative entries
         negs = pd.concat([neg_rwanda_tr_lower, neg_rwanda_tr_upper,
-                          neg_rwanda_va, neg_uganda_te])
+                          neg_rwanda_va, neg_rwanda_te, neg_uganda_te])
         negs["pos_neg"] = "neg"
         # concatenate positive and negative entries
         df_pos_neg = gpd.GeoDataFrame(
@@ -375,6 +417,9 @@ if __name__ == "__main__":
     rwanda_va_bounds["id"] = "rw-va-0"
     rwanda_va_bounds["split"] = "val"
 
+    rwanda_te_bounds["id"] = "rw-te-0"
+    rwanda_te_bounds["split"] = "test"
+
     rwanda_tr_upper_bounds["id"] = "rw-tr-up-0"
     rwanda_tr_upper_bounds["split"] = "train"
 
@@ -388,7 +433,7 @@ if __name__ == "__main__":
 
     # concatenate all Rwanda bounds
     rw_all_bounds = pd.concat([
-        rwanda_tr_lower_bounds, rwanda_va_bounds,
+        rwanda_tr_lower_bounds, rwanda_va_bounds, rwanda_te_bounds,
         rwanda_tr_upper_bounds, rwanda_bounds]).reset_index(drop=True)
     rw_all_bounds["Country"] = "Rwanda"
 

@@ -43,7 +43,7 @@ class BridgeResnet(nn.Module):
                 self.model.classifier[1].in_features, 2)
         elif not lazy and model_name == "efficientnet_b7":
             self.model.features[0][0] = nn.Conv2d(
-                num_channels, 32, kernel_size=(3, 3), stride=(2, 2),
+                num_channels, 64, kernel_size=(3, 3), stride=(2, 2),
                 padding=(1, 1), bias=False)
             self.model.classifier[1] = nn.Linear(
                 self.model.classifier[1].in_features, 2)

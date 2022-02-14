@@ -13,12 +13,8 @@ import torch.nn as nn
 
 import torch.backends.cudnn as cudnn
 
-<<<<<<< Updated upstream
-from src import models
-=======
 from src import models, utils
 from train import get_num_channels
->>>>>>> Stashed changes
 from train_ssl import VAL_LOG_FORMAT
 from src.utils import AverageMeter, accuracy
 from src.data.bridge_site import get_dataloaders, get_num_channels

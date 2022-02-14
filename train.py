@@ -26,7 +26,7 @@ def train_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
     losses = AverageMeter()
     accs = AverageMeter()
 
-    tp_fp_tn_fn = np.zeros(4)
+    tp_tn_fp_fn = np.zeros(4)
     for i, (inputs, labels) in enumerate(dataloader):
         if cuda:
             inputs = inputs.float().cuda()
@@ -42,7 +42,7 @@ def train_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
         prec1 = accuracy(prediction, labels, topk=[1])[0]
 
         accs.update(prec1.item(), inputs.size(0))
-        tp_fp_tn_fn += np.array(utils.get_tp_tn_fp_fn(
+        tp_tn_fp_fn += np.array(utils.get_tp_tn_fp_fn(
             prediction.detach().cpu(), labels.cpu()))
 
         if log_interval is not None and i % log_interval == 0:
@@ -52,13 +52,13 @@ def train_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
     return (
         float(np.round(losses.avg, 8)),
         float(np.round(accs.avg, 8)),
-        list(map(int, tp_fp_tn_fn.tolist())),
+        list(map(int, tp_tn_fp_fn.tolist())),
         float(np.round(time_taken, 2)))
 
 
 def test_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
                       dataloader, cuda: bool,
-                      use_several_test_samples: bool = False):
+                      no_use_several_test_samples: bool = False):
     start_time = time.time()
     model.eval()
     losses = AverageMeter()
@@ -70,18 +70,18 @@ def test_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
             if cuda:
                 inputs = inputs.float().cuda()
                 labels = labels.long().cuda()
-            if use_several_test_samples:
+            if not no_use_several_test_samples:
                 batch_size, num_samples, c, w, h = inputs.shape
                 inputs = inputs.view(batch_size * num_samples, c, w, h)
 
             prediction = model(inputs)
 
-            if use_several_test_samples:
+            if not no_use_several_test_samples:
                 labels_ = labels.unsqueeze(-1).repeat(1, num_samples).view(-1)
                 loss = criterion(prediction, labels_)
             else:
                 loss = criterion(prediction, labels)
-            if use_several_test_samples:
+            if not no_use_several_test_samples:
                 prediction = torch.softmax(
                     prediction.view(batch_size, num_samples, -1), -1).mean(1)
             tp_fp_tn_fn += np.array(utils.get_tp_tn_fp_fn(
@@ -101,15 +101,19 @@ def test_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
 def train(model: nn.Module, criterion: nn.Module, dataloaders: Tuple,
           optimizer, epochs: int, save_dir: str, cuda: bool = True,
           log_interval: int = None, scheduler=None,
-          use_several_test_samples: bool = False):
-    dataloader_train, dataloader_validation, dataloader_test, _ = dataloaders
+          no_use_several_test_samples: bool = False):
+    (dataloader_train, dataloader_validation, dataloader_test_rw,
+     dataloader_test_ug, _) = dataloaders
     best_val_loss, best_epoch = float("inf"), -1
     best_save_fp = path.join(save_dir, "best.pt")
     train_logs = [("epoch", "train_loss", "train_acc", "train_time",
-                   "val_loss", "val_acc", "val_time", "test_loss", "test_acc",
-                  "test_time", "best_val_loss", "best_val_epoch", "tr_tp",
-                   "tr_fp", "tr_tn", "tr_fp", "va_tp", "va_fp", "va_tn",
-                   "va_fp", "te_tp", "te_fp", "te_tn", "te_fp")]
+                   "val_loss", "val_acc", "val_time", "test_rw_loss",
+                   "test_rw_acc", "test_rw_time", "test_ug_loss",
+                   "test_ug_acc", "test_ug_time", "best_val_loss",
+                   "best_val_epoch", "tr_tp", "tr_tn", "tr_fp", "tr_fn",
+                   "va_tp", "va_tn", "va_fp", "va_fn", "te_rw_tp", "te_rw_tn",
+                   "te_rw_fp", "te_rw_fn", "te_ug_tp", "te_ug_tn", "te_ug_fp",
+                   "te_ug_fn")]
     for epoch in range(epochs):
         print(f"\nStarting epoch {epoch}")
         loss_train, acc_train, stats_train, time_train = train_for_an_epoch(
@@ -118,31 +122,46 @@ def train(model: nn.Module, criterion: nn.Module, dataloaders: Tuple,
         )
         loss_val, acc_val, stats_val, time_val = test_for_an_epoch(
             model, criterion, dataloader_validation, cuda,
-            use_several_test_samples=use_several_test_samples
+            no_use_several_test_samples=no_use_several_test_samples
         )
-        loss_test, acc_test, stats_test, time_test = test_for_an_epoch(
-            model, criterion, dataloader_test, cuda,
-            use_several_test_samples=use_several_test_samples
+        (loss_test_rw, acc_test_rw, stats_test_rw,
+         time_test_rw) = test_for_an_epoch(
+            model, criterion, dataloader_test_rw, cuda,
+            no_use_several_test_samples=no_use_several_test_samples
         )
-        print(("[Train epoch {:d}] loss: {:.4f} acc: {:.2f}% "
+        (loss_test_ug, acc_test_ug, stats_test_ug,
+         time_test_ug) = test_for_an_epoch(
+            model, criterion, dataloader_test_ug, cuda,
+            no_use_several_test_samples=no_use_several_test_samples
+        )
+        print(("[Train epoch {:d}] loss: {:.4f} acc: {:.2f}% F1: {:.4f}"
                "time: {:.1f} sec.").format(
-            epoch, loss_train, acc_train, time_train))
-        print(("[Val epoch {:d}] loss: {:.4f} acc: {:.2f}% time: {:.1f} sec."
-               "best loss: {:.4f} (epoch {})").format(
-            epoch, loss_val, acc_val, time_val, best_val_loss,
-            best_epoch))
-        print(("[Test epoch {:d}] loss: {:.4f} acc: {:.2f}% "
-               "time: {:.1f} sec.").format(
-            epoch, loss_test, acc_test, time_test))
+            epoch, loss_train, acc_train, utils.get_f1(*stats_train),
+            time_train))
+        print(("[Val epoch {:d}] loss: {:.4f} acc: {:.2f}% F1: {:.4f} "
+               "time: {:.1f} sec. best loss: {:.4f} (epoch {})").format(
+            epoch, loss_val, acc_val, utils.get_f1(*stats_val), time_val,
+            best_val_loss, best_epoch))
+        print(("[Test (Rwanda) epoch {:d}] loss: {:.4f} acc: {:.2f}% "
+               "F1: {:.4f} sec. time: {:.1f} sec.").format(
+            epoch, loss_test_rw, acc_test_rw, utils.get_f1(*stats_test_rw),
+            time_test_rw))
+        print(("[Test (Uganda) epoch {:d}] loss: {:.4f} acc: {:.2f}% "
+               "F1: {:.4f} sec. time: {:.1f} sec.").format(
+            epoch, loss_test_ug, acc_test_ug, utils.get_f1(*stats_test_ug),
+            time_test_ug))
 
-        utils.print_confusion_matrix(*stats_train, name="Train")
-        utils.print_confusion_matrix(*stats_val, name="Val")
-        utils.print_confusion_matrix(*stats_test, name="Test")
+        # utils.print_confusion_matrix(*stats_train, name="Train")
+        # utils.print_confusion_matrix(*stats_val, name="Val")
+        # utils.print_confusion_matrix(*stats_test_rw, name="Test Rwanda")
+        # utils.print_confusion_matrix(*stats_test_ug, name="Test Uganda")
 
         train_log = [epoch, loss_train, acc_train, time_train, loss_val,
-                     acc_val, time_val, loss_test, acc_test,
-                     time_test, best_val_loss, best_epoch]
-        train_log += list(stats_train) + list(stats_val) + list(stats_test)
+                     acc_val, time_val, loss_test_rw, acc_test_rw,
+                     time_test_rw, loss_test_ug, acc_test_ug, time_test_ug,
+                     best_val_loss, best_epoch]
+        train_log += list(stats_train) + list(stats_val) + list(
+            stats_test_rw) + list(stats_test_ug)
         train_logs.append(train_log)
         if loss_val < best_val_loss:
             torch.save(
@@ -157,6 +176,8 @@ def train(model: nn.Module, criterion: nn.Module, dataloaders: Tuple,
             best_val_loss = loss_val
             best_epoch = epoch
             print("Save to {}".format(best_save_fp))
+        else:
+            print("Model can be found under", args.save_dir)
         if scheduler is not None:
             scheduler.step(loss_val)
 
@@ -183,7 +204,7 @@ def main(args):
     dataloaders = bridge_site.get_dataloaders(
         args.batch_size, args.tile_size,
         use_augment=not args.no_augmentation,
-        use_several_test_samples=args.use_several_test_samples,
+        use_several_test_samples=not args.no_use_several_test_samples,
         num_test_samples=args.num_test_samples,
         test_batch_size=args.test_batch_size,
         data_version=args.data_version,
@@ -196,7 +217,7 @@ def main(args):
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min")
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
-        scheduler = None
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min")
     train_logs = train(
         model,
         criterion,
@@ -207,7 +228,7 @@ def main(args):
         cuda=cuda,
         log_interval=args.log_interval,
         scheduler=scheduler,
-        use_several_test_samples=args.use_several_test_samples
+        no_use_several_test_samples=args.no_use_several_test_samples
     )
     return train_logs
 
@@ -221,7 +242,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str,
                         choices=["resnet18", "resnet50", "resnext",
                                  "efficientnet_b2", "efficientnet_b7"],
-                        default="efficientnet_b7")
+                        default="efficientnet_b2")
 
     # data
     parser.add_argument("--batch_size", type=int, default=256,
@@ -236,7 +257,7 @@ if __name__ == "__main__":
                                  "admin_bounds_qgis"])
     parser.add_argument("--no_augmentation", action="store_true")
 
-    parser.add_argument("--use_several_test_samples", action="store_true")
+    parser.add_argument("--no_use_several_test_samples", action="store_true")
     parser.add_argument("--num_test_samples", default=32, type=int)
     parser.add_argument("--test_batch_size", default=16, type=int)
 

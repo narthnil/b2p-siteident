@@ -72,6 +72,11 @@ def get_tp_tn_fp_fn(prediction: torch.Tensor, groundtruth: torch.Tensor):
     return tp.item(), tn.item(), fp.item(), fn.item()
 
 
+def get_f1(tp, _, fp, fn):
+    """Calculates F1 (macro) metric."""
+    return tp / (tp + 0.5 * (fp + fn))
+
+
 def print_confusion_matrix(tp, tn, fp, fn, name=""):
     print("{}confusion matrix".format(name + " "))
     print("{:04d} (TP) {:04d} (FP)".format(tp, fp))

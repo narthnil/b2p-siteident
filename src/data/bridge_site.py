@@ -570,7 +570,8 @@ class BridgeSampler(Sampler[int]):
 
     def __init__(self, tile_size: int, data: Dict = TRAIN_DATA,
                  data_version: str = "v1", num_samples: int = None,
-                 set_name: str = "train", shuffle: bool = True) -> None:
+                 set_name: str = "train", shuffle: bool = True,
+                 country: str = None) -> None:
         """Samples positive and negative tiles from bridge train dataset.
 
         Args:
@@ -599,6 +600,9 @@ class BridgeSampler(Sampler[int]):
         # open training data
         with open(data[data_version][tile_size]) as f:
             self.train_gdf = gpd.read_file(f)
+
+        if country is not None:
+            self.train_gdf = self.train_gdf[self.train_gdf.Country == country]
 
         # get number of positive data samples
         self.num_pos_samples = len(self.train_gdf[
@@ -844,8 +848,12 @@ def get_dataloaders(batch_size: int, tile_size: int,
         set_name="train", shuffle=True, **common_sampler_kwargs)
     sampler_validation = BridgeSampler(
         set_name="val", shuffle=False, **common_sampler_kwargs)
-    sampler_test = BridgeSampler(
-        set_name="test", shuffle=False, **common_sampler_kwargs)
+    sampler_test_rw = BridgeSampler(
+        set_name="test", shuffle=False, country="Rwanda",
+        **common_sampler_kwargs)
+    sampler_test_ug = BridgeSampler(
+        set_name="test", shuffle=False, country="Uganda",
+        **common_sampler_kwargs)
 
     # dataloaders
     common_loader_kwargs = {
@@ -859,8 +867,11 @@ def get_dataloaders(batch_size: int, tile_size: int,
     dataloader_validation = DataLoader(
         va_te_dataset, sampler=sampler_validation, batch_size=te_batch_size,
         **common_loader_kwargs)
-    dataloader_test = DataLoader(
-        va_te_dataset, sampler=sampler_test, batch_size=te_batch_size,
+    dataloader_test_rw = DataLoader(
+        va_te_dataset, sampler=sampler_test_rw, batch_size=te_batch_size,
+        **common_loader_kwargs)
+    dataloader_test_ug = DataLoader(
+        va_te_dataset, sampler=sampler_test_ug, batch_size=te_batch_size,
         **common_loader_kwargs)
 
     # unlabelled dataset
@@ -876,5 +887,5 @@ def get_dataloaders(batch_size: int, tile_size: int,
     )
 
     return (
-        dataloader_train, dataloader_validation, dataloader_test,
-        dataloader_nolab)
+        dataloader_train, dataloader_validation, dataloader_test_rw,
+        dataloader_test_ug, dataloader_nolab)
