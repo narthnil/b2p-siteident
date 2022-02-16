@@ -34,9 +34,9 @@ def get_uganda_tr_range(bounds):
     """
     tr_range = (
         bounds["uganda"]["left"] + (
-            bounds["uganda"]["right"] - bounds["uganda"]["left"]) / 11 * 8,
+            bounds["uganda"]["right"] - bounds["uganda"]["left"]) / 11 * 7,
         bounds["uganda"]["left"] + (
-            bounds["uganda"]["right"] - bounds["uganda"]["left"]) / 11 * 10
+            bounds["uganda"]["right"] - bounds["uganda"]["left"]) / 11 * 9
     )
     return tr_range
 

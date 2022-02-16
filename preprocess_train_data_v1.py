@@ -124,7 +124,7 @@ def get_rwanda_va_range(bounds):
     # we split the country Rwanda vertically according to
     val_range = (
         bounds["rwanda"]["left"] + (
-            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 3,
+            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 4,
         bounds["rwanda"]["left"] + (
             bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 5
     )
@@ -149,7 +149,7 @@ def get_rwanda_te_range(bounds):
         bounds["rwanda"]["left"] + (
             bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 5,
         bounds["rwanda"]["left"] + (
-            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 8
+            bounds["rwanda"]["right"] - bounds["rwanda"]["left"]) / 11 * 7
     )
     return val_range
 
