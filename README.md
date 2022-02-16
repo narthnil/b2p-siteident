@@ -101,7 +101,7 @@ All training parameters can be found in `src/argparser.py`. By default, it is re
 Supervised training:
 
 ```
-python train.py --model resnet50 --tile_size 1200 --save_dir results/resnet50-1200
+python train_dist.py --model resnet50 --tile_size 1200 --save_dir results/resnet50-1200
 ```
 
 Semi-supervised training:
