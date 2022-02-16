@@ -17,6 +17,7 @@ import torch
 from torch.utils.data import Dataset, Sampler, DataLoader
 
 from src.data import transforms as data_transf, augment, geometry, utils
+from third_party.catalyst.sampler import DistributedSamplerWrapper
 
 
 # key is the tile size (300, 600 or 1200m) and values are tuples representing
@@ -645,6 +646,29 @@ class BridgeSampler(Sampler[int]):
 
         # all indeces, both positive and negative
         self.indeces = list(pos + neg)
+        indeces_df = self.train_gdf.loc[self.indeces]
+        country_cnt = indeces_df.Country.value_counts()
+        if "Rwanda" in country_cnt:
+            rw_pos = indeces_df[
+                indeces_df.pos_neg == "pos"].Country.value_counts()["Rwanda"]
+            rw_neg = indeces_df[
+                indeces_df.pos_neg == "neg"].Country.value_counts()["Rwanda"]
+        else:
+            rw_pos = rw_neg = 0
+
+        if "Uganda" in country_cnt:
+            ug_pos = indeces_df[
+                indeces_df.pos_neg == "pos"].Country.value_counts()["Uganda"]
+            ug_neg = indeces_df[
+                indeces_df.pos_neg == "neg"].Country.value_counts()["Uganda"]
+        else:
+            ug_pos = ug_neg = 0
+        print(
+            "{} sampler: {} samples in total ({} pos, {} neg)".format(
+                set_name, len(self.indeces), len(pos), len(neg)) +
+            " ([Rwanda] {} pos {} neg [Uganda] {} pos {} neg)".format(
+                rw_pos, rw_neg, ug_pos, ug_neg)
+        )
 
     def __iter__(self) -> Iterator[int]:
 
@@ -781,7 +805,8 @@ def get_dataloaders(batch_size: int, tile_size: int,
                     train_metadata: str = METADATA,
                     use_augment: bool = True,
                     use_rnd_center_point: bool = True,
-                    use_several_test_samples: bool = False) -> Tuple[
+                    use_several_test_samples: bool = False,
+                    ddp: bool = False) -> Tuple[
         DataLoader, DataLoader]:
     """Returns dataloaders for training and evaluation.
 
@@ -854,16 +879,25 @@ def get_dataloaders(batch_size: int, tile_size: int,
     sampler_test_ug = BridgeSampler(
         set_name="test", shuffle=False, country="Uganda",
         **common_sampler_kwargs)
+    if ddp:
+        sampler_train = DistributedSamplerWrapper(sampler_train, shuffle=True)
+        sampler_validation = DistributedSamplerWrapper(
+            sampler_validation, shuffle=False)
+        sampler_test_rw = DistributedSamplerWrapper(
+            sampler_test_rw, shuffle=False)
+        sampler_test_ug = DistributedSamplerWrapper(
+            sampler_test_ug, shuffle=False)
 
     # dataloaders
     common_loader_kwargs = {
-        "worker_init_fn": utils.worker_init_fn,
-        "num_workers": num_workers
+        "num_workers": num_workers,
+        "pin_memory": True
     }
     te_batch_size = test_batch_size if use_several_test_samples else batch_size
     dataloader_train = DataLoader(
         tr_dataset, sampler=sampler_train, batch_size=batch_size,
-        drop_last=True, **common_loader_kwargs)
+        drop_last=True, **common_loader_kwargs,
+        worker_init_fn=utils.worker_init_fn,)
     dataloader_validation = DataLoader(
         va_te_dataset, sampler=sampler_validation, batch_size=te_batch_size,
         **common_loader_kwargs)

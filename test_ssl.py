@@ -38,7 +38,7 @@ def do_test(save_dir, overwrite=False):
         print("According to opts.json the model has not finished.")
         return False
 
-    best_model_fp = path.join(save_dir, "model_best.pth.tar")
+    best_model_fp = path.join(save_dir, "model_best.pt")
     if not path.isfile(best_model_fp):
         print("{} does not exist.".format(best_model_fp))
         return False
@@ -119,7 +119,8 @@ def test(dataloader, model, criterion, mode, cuda: bool = True,
             end = time.time()
 
     log()
-    return (losses.avg, top1.avg, tp, tn, fp, fn)
+    f1 = utils.get_f1(tp, tn, fp, fn)
+    return (losses.avg, top1.avg, f1, tp, tn, fp, fn)
 
 
 def main(args):
