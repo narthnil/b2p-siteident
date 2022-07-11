@@ -45,7 +45,7 @@ Uganda:
 * South: -1.476110339
 * West: 29.574302673
 
-# Data structure
+## Data structure
 
 The data is structured as followed after using the instructions:
 
