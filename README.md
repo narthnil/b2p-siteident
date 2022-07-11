@@ -94,7 +94,7 @@ Remove these rows in `data/ground_truth/Uganda_TrainingData_3districts_ADSK.csv`
 1024494,0063Z00000kcREr,,
 ```
 
-## Model training
+# Model training
 All training parameters can be found in `src/argparser.py`. By default, it is required to specify a unique `--save_dir` 
 (the directory to which training artifacts are saved). It is recommended to use the `results` base directory as those files will be ignored by git.
 
