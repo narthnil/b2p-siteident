@@ -1,1 +1,0 @@
-# Bridge Type and Span data
