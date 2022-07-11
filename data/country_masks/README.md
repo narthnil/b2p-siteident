@@ -22,3 +22,23 @@ The following step-by-step description explains how to extract a country boundar
 8. Click on `Raster` -> `Conversion` -> `Rasterize (Vector to Raster)`. Use a resolution of 1/3600 and a value of 1.0 for values within the polygon and a value of 0.0 for no data fields. All settings are shown in the screenshot below.
 
 ![](../../docs_imgs/QGIS_rasterize.png)
+
+## Data structure
+
+The folder has the following structure after downloading and processing the data:
+
+```
+data/country_masks/
+├── Longitude_Graticules_and_World_Countries_Boundaries.geojson
+├── README.md
+├── rwanda.dbf
+├── rwanda_mask_1-3600.tiff
+├── rwanda.prj
+├── rwanda.shp
+├── rwanda.shx
+├── uganda.dbf
+├── uganda_mask_1-3600.tiff
+├── uganda.prj
+├── uganda.shp
+└── uganda.shx
+```
