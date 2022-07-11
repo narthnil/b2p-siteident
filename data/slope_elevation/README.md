@@ -7,6 +7,20 @@ with a Google account. Go to
 [earthengine.google.com](https://earthengine.google.com/) to sign-in.
 Approval usually takes several hours to a day.
 
+The data structure in this folder is as follows after following the js scripts
+to extract data:
+
+```
+data/slope_elevation/
+├── elevation_rwanda.tif
+├── elevation_rwanda_uganda.js
+├── elevation_uganda.tif
+├── README.md
+├── slope_rwanda.tif
+├── slope_rwanda_uganda.js
+└── slope_uganda.tif
+```
+
 ## Using Google Earth Engine Code editor to extract slope and elevation
 
 The scripts `data/slope_elevation/elevation_rwanda_uganda.js` and
