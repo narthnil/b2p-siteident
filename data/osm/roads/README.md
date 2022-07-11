@@ -44,3 +44,14 @@ Which will write a tif file with 1 arc second resolution to:
 `data/osm/{country}/roads/{country}-roads.tif`.
 
 To change the resolution, simply adapt the values after the `-tr` argument in the command above.
+
+## Data structure
+
+The folder structure is as follows:
+
+```
+data/osm/roads/
+├── README.md
+├── rwanda-osm-roads.tif
+└── uganda-osm-roads.tif
+```
