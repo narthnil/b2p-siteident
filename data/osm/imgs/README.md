@@ -44,3 +44,15 @@ Uganda:
 * East: 35.009719849
 * South: -1.476110339
 * West: 29.574302673
+
+# Data structure
+
+The data is structured as followed after using the instructions:
+
+```
+data/osm/imgs/
+├── README.md
+├── rwanda_osm_nolab_1-50000_4326.tiff
+├── uganda_osm_nolab_1-50000_4326.tiff
+└── uganda_train_osm_nolab_1-50000_4326.tiff
+```
