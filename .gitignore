@@ -144,6 +144,8 @@ data/*/*.csv
 data/*/*/*.csv
 data/*/*.zip
 data/*/*/*.zip
+data/rgb_tiles/v1_*
+data/rgb_tiles/v2_*
 
 # vscode
 launch.json
@@ -152,3 +154,4 @@ results*/
 scripts/
 
 data.zip
+

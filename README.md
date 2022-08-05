@@ -1,6 +1,6 @@
 # B2P Remote Trailbridge Needs Assessment
 
-## Install GDAL (MacOS, Ubuntu)
+## Install Anaconda environment and GDAL (MacOS, Ubuntu)
 
 ### Install Anaconda environment
 
@@ -57,11 +57,53 @@ jupyter notebook --generate-config
 
 # Preprocess data
 
-Download `data.zip` from B2P Google drive and put the file into the root of this repository [(Link to B2P, permission is required)](https://drive.google.com/drive/folders/1sbJ8xUDyGOtcmO25q7ZQwPw3uxa3wHkF?usp=sharing).
-Use the following commands to extract the files, move them to the `./data/` folder and calculate the statistics for training.
+Download `data.zip` from B2P Google drive and put the file into the root of this 
+repository [(Link to B2P, permission is required)](https://drive.google.com/drive/folders/1sbJ8xUDyGOtcmO25q7ZQwPw3uxa3wHkF?usp=sharing).
+Use the following commands to extract the files, move them to the `./data/` 
+folder and calculate the statistics for training.
 
 ```
 bash src/scripts/extract_data.sh
+```
+
+We also provide `processed_ground_truth.zip` in the same Google drive folder 
+(link provided  above).If you download and extract it to `data/ground_truth`:
+```
+unzip processed_ground_truth.zip -d data/ground_truth/
+rm processed_ground_truth.zip
+```
+
+You will work  with the same train/val/test split as we did for the evaluation. 
+The folder structure would look like this:
+
+```
+data/ground_truth/
+├── bounds_v1.geojson
+├── bounds_v1_ssl.geojson
+├── bounds_v2.geojson
+├── bounds_v2_ssl.geojson
+├── processed_ground_truth.zip
+├── README.md
+├── Rwanda training data_AllSitesMinusVehicleBridges_21.11.05.csv
+├── stats.json
+├── train_1200_v1.geojson
+├── train_1200_v1_ssl.geojson
+├── train_1200_v2.geojson
+├── train_1200_v2_ssl.geojson
+├── train_300_v1.geojson
+├── train_300_v1_ssl.geojson
+├── train_300_v2.geojson
+├── train_300_v2_ssl.geojson
+├── train_600_v1.geojson
+├── train_600_v1_ssl.geojson
+├── train_600_v2.geojson
+├── train_600_v2_ssl.geojson
+└── Uganda_TrainingData_3districts_ADSK.csv
+```
+
+If you want to create a random new train/val/test split, please execute the
+following scripts:
+```
 python preprocess_train_data_v1.py
 python preprocess_train_data_v2.py
 python calculate_stats.py

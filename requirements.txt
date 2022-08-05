@@ -7,3 +7,5 @@ geographiclib
 scikit-learn
 tqdm
 rtree
+geopy
+earthengine-api
