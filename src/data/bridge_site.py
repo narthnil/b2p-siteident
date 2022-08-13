@@ -873,6 +873,8 @@ def get_dataloaders(batch_size: int, tile_size: int,
         set_name="train", shuffle=True, **common_sampler_kwargs)
     sampler_validation = BridgeSampler(
         set_name="val", shuffle=False, **common_sampler_kwargs)
+    sampler_test = BridgeSampler(
+        set_name="test", shuffle=False, **common_sampler_kwargs)
     sampler_test_rw = BridgeSampler(
         set_name="test", shuffle=False, country="Rwanda",
         **common_sampler_kwargs)
@@ -883,6 +885,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
         sampler_train = DistributedSamplerWrapper(sampler_train, shuffle=True)
         sampler_validation = DistributedSamplerWrapper(
             sampler_validation, shuffle=False)
+        sampler_test = DistributedSamplerWrapper(sampler_test, shuffle=False)
         sampler_test_rw = DistributedSamplerWrapper(
             sampler_test_rw, shuffle=False)
         sampler_test_ug = DistributedSamplerWrapper(
@@ -900,6 +903,9 @@ def get_dataloaders(batch_size: int, tile_size: int,
         worker_init_fn=utils.worker_init_fn,)
     dataloader_validation = DataLoader(
         va_te_dataset, sampler=sampler_validation, batch_size=te_batch_size,
+        **common_loader_kwargs)
+    dataloader_test = DataLoader(
+        va_te_dataset, sampler=sampler_test, batch_size=te_batch_size,
         **common_loader_kwargs)
     dataloader_test_rw = DataLoader(
         va_te_dataset, sampler=sampler_test_rw, batch_size=te_batch_size,
@@ -921,5 +927,5 @@ def get_dataloaders(batch_size: int, tile_size: int,
     )
 
     return (
-        dataloader_train, dataloader_validation, dataloader_test_rw,
-        dataloader_test_ug, dataloader_nolab)
+        dataloader_train, dataloader_validation, dataloader_test,
+        dataloader_test_rw, dataloader_test_ug, dataloader_nolab)
