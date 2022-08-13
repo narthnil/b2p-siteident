@@ -45,6 +45,13 @@ Uganda:
 * South: -1.476110339
 * West: 29.574302673
 
+Ethiopia:
+
+* North: 14.883609772
+* East: 47.988187290
+* South: 3.406665328
+* West: 32.991798401
+
 ## Data structure
 
 The data is structured as followed after using the instructions:
