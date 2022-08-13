@@ -19,14 +19,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from PIL import Image
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, balanced_accuracy_score
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
-from torchvision import datasets, models, transforms
+from torchvision import models, transforms
+from src import utils
 
 NUM_LAYERS = {
     "resnet18": 52,
@@ -44,6 +45,11 @@ INPUT_SIZE = {
     "v2_b2p_rgb_large_1150_600_jpg": 60,
     "v2_b2p_rgb_large_2350_1200_jpg": 120,
 }
+
+class Args(object):
+    def __init__(self, opts) -> None:
+        for k, v in opts.items():
+            setattr(self, k, v)
 
 
 def train_model(model, dataloaders, criterion, optimizer, lr_scheduler,
@@ -180,9 +186,11 @@ def test_best_model(model, criterion, dataloaders):
             epoch_acc = (
                 running_corrects.double() / len(dataloader.dataset)).item()
             weighted_f1 = f1_score(y_true, y_pred, average='weighted')
+            balanced_acc = balanced_accuracy_score(y_true, y_pred)
             stats[name + "_loss"] = round(epoch_loss, 4)
             stats[name + "_acc"] = round(epoch_acc * 100, 4)
             stats[name + "_weighted_f1"] = round(weighted_f1, 4)
+            stats[name + "_balanced_acc"] = round(balanced_acc, 4)
 
             print(format_str.format(
                 name, epoch_loss, epoch_acc * 100, weighted_f1))
@@ -208,6 +216,7 @@ def initialize_model(model_name, num_classes, use_last_n_layers=1,
             nn.Dropout(p=0.3, inplace=True),
             nn.Linear(num_ftrs, num_classes))
     else:
+        
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, num_classes)
     return model
@@ -273,12 +282,12 @@ def get_rgb_tiles_stats(rgb_tiles_paths: str = "data/rgb_tiles/*_jpg"):
 
 class RGBTilesDataset(Dataset):
     def __init__(self, root_dir: str, dataset_name: str, phase: str = "train",
-                 use_transform: bool = True):
+                 use_transform: bool = True, country=None):
         assert phase in ["train", "val", "test"], "Phase not known."
         assert path.isdir(path.join(root_dir, dataset_name)), \
             "Dataset folder does not exist."
-        assert path.isfile(path.join(root_dir, "stats.json")), \
-            "stats.json in `root_dir` does not exist."
+        assert path.isfile(path.join(root_dir,  "stats.json")), \
+            "stats.json in `{}` does not exist.".format(root_dir)
 
         self.root_dir = root_dir
         self.dataset_name = dataset_name
@@ -327,7 +336,6 @@ class RGBTilesDataset(Dataset):
                 (fp, 0) for fp in glob.glob(
                     path.join(root_dir, dataset_name, "*-neg-val-*.jpg"))]
         elif phase == "test":
-
             # positives
             self.data_tuples += [
                 (fp, 1) for fp in glob.glob(
@@ -336,10 +344,20 @@ class RGBTilesDataset(Dataset):
             self.data_tuples += [
                 (fp, 0) for fp in glob.glob(
                     path.join(root_dir, dataset_name, "*-neg-te-*.jpg"))]
-        print("Loaded paths for {} dataset ({} pos, {} neg)".format(
-            phase,
-            sum([1 for dt in self.data_tuples if dt[1] == 1]),
-            sum([1 for dt in self.data_tuples if dt[1] == 0])
+            if country is not None and country in ["Rwanda", "Uganda"]:
+                if country == "Rwanda":
+                    self.data_tuples = [
+                        dt for dt in self.data_tuples if "_rw-" in dt[0]]
+                elif country == "Uganda":
+                    self.data_tuples = [
+                        dt for dt in self.data_tuples if "_ug-" in dt[0]]
+
+        print(
+            "Loaded paths for {} dataset ({} pos, {} neg, country: {})".format(
+                phase,
+                sum([1 for dt in self.data_tuples if dt[1] == 1]),
+                sum([1 for dt in self.data_tuples if dt[1] == 0]),
+                country
         ))
 
     def __len__(self):
@@ -353,101 +371,144 @@ class RGBTilesDataset(Dataset):
         return image, label
 
 
+def get_dataloaders(args):
+    # Create training and validation datasets
+        datasets = {
+            x: RGBTilesDataset(args.dataset_root_dir, args.dataset_name, 
+            phase=x)
+            for x in ['train', 'val', 'test']}
+        datasets["test_rwanda"] = RGBTilesDataset(
+            args.dataset_root_dir, args.dataset_name, phase="test", 
+            country="Rwanda")
+        datasets["test_uganda"] = RGBTilesDataset(
+            args.dataset_root_dir, args.dataset_name, phase="test", 
+            country="Uganda")
+        # Create training and validation dataloaders
+        dataloaders = {}
+        dataloaders["train"] = DataLoader(
+            datasets["train"], batch_size=args.batch_size, shuffle=True,
+            num_workers=args.num_workers)
+        dataloaders["val"] = DataLoader(
+            datasets["val"], batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers)
+        dataloaders["test"] = DataLoader(
+            datasets["test"], batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers)
+        dataloaders["test_rwanda"] = DataLoader(
+            datasets["test_rwanda"], batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers)
+        dataloaders["test_uganda"] = DataLoader(
+            datasets["test_uganda"], batch_size=args.batch_size, shuffle=False,
+            num_workers=args.num_workers)
+        return dataloaders
+
+
 if __name__ == "__main__":
-    argparser = argparse.ArgumentParser("Finetune hyperparams")
-    argparser.add_argument("--output_dir", required=True, type=str)
-    argparser.add_argument("--overwrite", action="store_true",
+    parser = argparse.ArgumentParser("Finetune hyperparams")
+    parser.add_argument("--output_dir", required=True, type=str)
+    parser.add_argument("--overwrite", action="store_true",
                            help="Overwrite existing output directory.")
-    argparser.add_argument("--model_name", default="resnet50", type=str,
+    parser.add_argument("--model_name", default="resnet50", type=str,
                            choices=["resnet50", "resnet18", "wide_resnet50_2",
                                     "efficientnet_v2_s", "efficientnet_v2_m"])
-    argparser.add_argument("--num_classes", default=2, type=int)
-    argparser.add_argument("--batch_size", default=64, type=int)
-    argparser.add_argument("--num_epochs", default=100, type=int)
-    argparser.add_argument("--use_last_n_layers", default=1, type=int)
-    argparser.add_argument("--no_use_pretrained", action="store_true")
-    argparser.add_argument("--num_workers", default=8, type=int)
-    argparser.add_argument("--lr", default=1e-3, type=float)
-    argparser.add_argument("--dataset_root_dir", type=str,
+    parser.add_argument("--num_classes", default=2, type=int)
+    parser.add_argument("--batch_size", default=64, type=int)
+    parser.add_argument("--num_epochs", default=100, type=int)
+    parser.add_argument("--use_last_n_layers", default=1, type=int)
+    parser.add_argument("--no_use_pretrained", action="store_true")
+    parser.add_argument("--num_workers", default=8, type=int)
+    parser.add_argument("--lr", default=1e-4, type=float)
+    parser.add_argument("--dataset_root_dir", type=str,
                            default="data/rgb_tiles")
-    argparser.add_argument("--dataset_name",
+    parser.add_argument("--dataset_name",
                            default="v1_b2p_rgb_large_590_320_jpg", type=str,
                            choices=list(INPUT_SIZE.keys()))
+    parser.add_argument("--evaluate", action="store_true")
+    parser.add_argument("--seed", default=42, type=int)
 
-    args = argparser.parse_args()
+    args = parser.parse_args()
+    
+    utils.fix_random_seeds(args.seed)
 
-    if path.isdir(args.output_dir) and not args.overwrite:
+    train_phase = True
+    if path.isdir(args.output_dir) and args.evaluate:
+        train_phase = False
+    elif path.isdir(args.output_dir) and not args.overwrite:
         print("Path {} already exists.".format(args.output_dir))
         exit()
     elif args.overwrite:
         shutil.rmtree(args.output_dir)
 
-    makedirs(args.output_dir)
-    print("Output path: {}".format(args.output_dir))
-    with open(path.join(args.output_dir, "opts.json"), "w+") as f:
-        json.dump(vars(args), f, indent=4)
+    if train_phase:
+        makedirs(args.output_dir)
+        print("Output path: {}".format(args.output_dir))
+        with open(path.join(args.output_dir, "opts.json"), "w+") as f:
+            json.dump(vars(args), f, indent=4)
 
-    # Initialize the model for this run
-    model = initialize_model(args.model_name, args.num_classes,
-                             use_last_n_layers=args.use_last_n_layers,
-                             use_pretrained=not args.no_use_pretrained)
+        # Initialize the model for this run
+        model = initialize_model(args.model_name, args.num_classes,
+                                use_last_n_layers=args.use_last_n_layers,
+                                use_pretrained=not args.no_use_pretrained)
 
-    # Print the model we just instantiated
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
-    print("Number of trainable params: {}".format(params))
+        # Print the model we just instantiated
+        model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+        params = sum([np.prod(p.size()) for p in model_parameters])
+        print("Number of trainable params: {}".format(params))
 
-    print("Initializing Datasets and Dataloaders...")
+        print("Initializing Datasets and Dataloaders...")
 
-    # Create training and validation datasets
-    datasets = {
-        x: RGBTilesDataset(args.dataset_root_dir, args.dataset_name, phase=x)
-        for x in ['train', 'val', 'test']}
-    # Create training and validation dataloaders
-    dataloaders = {}
-    dataloaders["train"] = DataLoader(
-        datasets["train"], batch_size=args.batch_size, shuffle=True,
-        num_workers=args.num_workers)
-    dataloaders["val"] = DataLoader(
-        datasets["val"], batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers)
-    dataloaders["test"] = DataLoader(
-        datasets["test"], batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers)
+        dataloaders = get_dataloaders(args)
 
-    # Detect if we have a GPU available
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        # Detect if we have a GPU available
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Send the model to GPU
-    model = model.to(device)
+        # Send the model to GPU
+        model = model.to(device)
 
-    # Gather the parameters to be optimized/updated in this run. If we are
-    #  finetuning we will be updating all parameters. However, if we are
-    #  doing feature extract method, we will only update the parameters
-    #  that we have just initialized, i.e. the parameters with requires_grad
-    #  is True.
-    params_to_update = []
-    for name, param in model.named_parameters():
-        if param.requires_grad == True:
-            params_to_update.append(param)
+        # Gather the parameters to be optimized/updated in this run. If we are
+        #  finetuning we will be updating all parameters. However, if we are
+        #  doing feature extract method, we will only update the parameters
+        #  that we have just initialized, i.e. the parameters with requires_grad
+        #  is True.
+        params_to_update = []
+        for name, param in model.named_parameters():
+            if param.requires_grad == True:
+                params_to_update.append(param)
 
-    # Observe that all parameters are being optimized
-    optimizer = optim.Adam(params_to_update, lr=args.lr)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer)
+        # Observe that all parameters are being optimized
+        optimizer = optim.Adam(params_to_update, lr=args.lr)
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer)
 
-    # Setup the loss fxn
-    criterion = nn.CrossEntropyLoss()
+        # Setup the loss fxn
+        criterion = nn.CrossEntropyLoss()
 
-    # Train and evaluate
-    model, hist = train_model(
-        model, dataloaders, criterion, optimizer, lr_scheduler,
-        path.join(args.output_dir, "best.cpkt"),
-        path.join(args.output_dir, "last.cpkt"), num_epochs=args.num_epochs)
+        # Train and evaluate
+        model, hist = train_model(
+            model, dataloaders, criterion, optimizer, lr_scheduler,
+            path.join(args.output_dir, "best.cpkt"),
+            path.join(args.output_dir, "last.cpkt"), num_epochs=args.num_epochs)
 
-    stats = test_best_model(model, criterion, dataloaders)
+        stats = test_best_model(model, criterion, dataloaders)
 
-    with open(path.join(args.output_dir, "test_stats.json"), "w+") as f:
-        json.dump(stats, f, indent=4)
+        with open(path.join(args.output_dir, "test_stats.json"), "w+") as f:
+            json.dump(stats, f, indent=4)
 
-    pd.DataFrame(hist[1:], columns=hist[0]).to_csv(
-        path.join(args.output_dir, "train_history.csv"), index=False)
+        pd.DataFrame(hist[1:], columns=hist[0]).to_csv(
+            path.join(args.output_dir, "train_history.csv"), index=False)
+    else:
+        print("Output path: {}".format(args.output_dir))
+        with open(path.join(args.output_dir, "opts.json")) as f:
+            opts = json.load(f)
+        print(json.dumps(opts, indent=4))
+        args = Args(opts)
+        print(args.model_name)
+        # Initialize the model for this run
+        model = initialize_model(args.model_name, args.num_classes,
+                                use_last_n_layers=args.use_last_n_layers,
+                                use_pretrained=not args.no_use_pretrained)
+
+        print("Initializing Datasets and Dataloaders...")
+
+        dataloaders = get_dataloaders(args)
+
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

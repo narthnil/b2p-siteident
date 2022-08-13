@@ -1,8 +1,11 @@
 import argparse
+from genericpath import isfile
 import json
 import os
 import os.path as path
 from typing import Tuple
+
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -10,15 +13,58 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 
 from torch.utils.data import DataLoader
+from torchvision import models
 
-from src import models, utils
+from train_baseline import set_parameter_requires_grad, Args
+from src import utils
 from src.data.bridge_site import get_num_channels, get_dataloaders
+
+from sklearn.metrics import balanced_accuracy_score, f1_score
+
+
+def initialize_model(model_name, num_classes, num_channels, 
+                     use_last_n_layers=-1, use_pretrained=True):
+    # Initialize these variables which will be set in this if statement. Each
+    # of these variables is model specific
+    if use_pretrained:
+        if model_name.startswith("efficientnet") or model_name == "resnet18":
+            weights = "IMAGENET1K_V1"
+        else:
+            weights = "IMAGENET1K_V2"
+    else:
+        weights = None
+    model = getattr(models, model_name)(weights=weights)
+    set_parameter_requires_grad(model, model_name, use_last_n_layers)
+    if model_name.startswith("efficientnet"):
+        model.features[0][0] = nn.Conv2d(
+                num_channels, model.features[0][0].out_channels, 
+                kernel_size=model.features[0][0].kernel_size, 
+                stride=model.features[0][0].stride,
+                padding=model.features[0][0].padding, 
+                bias=model.features[0][0].bias)
+        for param in model.features.parameters():
+            param.requires_grad = True
+        num_ftrs = model.classifier[1].in_features
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.3, inplace=True),
+            nn.Linear(num_ftrs, num_classes))
+    else:
+        model.conv1 = nn.Conv2d(
+            num_channels, model.conv1.out_channels, 
+            kernel_size=model.conv1.kernel_size, 
+            stride=model.conv1.stride)
+        for param in model.conv1.parameters():
+            param.requires_grad = True
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, num_classes)
+    return model
 
 
 def train_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
                        dataloader: DataLoader, optimizer, epoch: int,
                        epochs: int, log_interval: int = None,
                        fp16_scaler=None):
+    model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Train | Epoch: [{}/{}]'.format(epoch + 1, epochs)
     for (inputs, labels) in metric_logger.log_every(
@@ -68,6 +114,8 @@ def test_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
             if not no_use_several_test_samples:
                 batch_size, num_samples, c, w, h = inputs.shape
                 inputs = inputs.view(batch_size * num_samples, c, w, h)
+            else:
+                batch_size = inputs.shape[0]
 
             prediction = model(inputs)
 
@@ -79,7 +127,6 @@ def test_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
             if not no_use_several_test_samples:
                 prediction = torch.softmax(
                     prediction.view(batch_size, num_samples, -1), -1).mean(1)
-
             prec1 = utils.accuracy(prediction, labels, topk=[1])[0]
             metric_logger.update(
                 loss=(loss.item(), batch_size), prec1=(prec1, batch_size))
@@ -98,8 +145,8 @@ def train(model: nn.Module, criterion: nn.Module, dataloaders: Tuple,
     best_val_loss, best_epoch = float("inf"), -1
     best_save_fp = path.join(save_dir, "model_best.pt")
 
-    (dataloader_train, dataloader_validation, dataloader_test_rw,
-     dataloader_test_ug, _) = dataloaders
+    (dataloader_train, dataloader_validation, dataloader_test,
+     dataloader_test_rw, dataloader_test_ug, _) = dataloaders
     stats_dict = []
     for epoch in range(epochs):
         train_stats = train_for_an_epoch(
@@ -183,8 +230,12 @@ def main(args):
 
     # model
     num_channels = get_num_channels(args.data_modalities)
-    model = models.BridgeResnet(
-        model_name=args.model, lazy=False, num_channels=num_channels)
+    model = initialize_model(args.model, 2, num_channels, 
+                             use_last_n_layers=args.use_last_n_layers,
+                             use_pretrained=not args.no_use_pretrained)
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    params = sum([np.prod(p.size()) for p in model_parameters])
+    print("Number of trainable params: {}".format(params))
     model = model.cuda()
     if utils.has_batchnorms(model):
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -236,6 +287,124 @@ def main(args):
             json.dump(vars(args), f, indent=4)
 
 
+def evaluate(args_main):
+    opts_fp = path.join(args_main.save_dir, "opts.json")
+    logs_fp = path.join(args_main.save_dir, "logs.json")
+    if not (path.isfile(opts_fp) and path.isfile(logs_fp)):
+        print("{} is not finished.".format(args_main.save_dir))
+        return
+    
+    with open(path.join(args_main.save_dir, "opts.json")) as f:
+        opts = json.load(f)
+    args = Args(opts)
+
+    args.no_use_several_test_samples = args_main.no_use_several_test_samples
+    args.num_test_samples = args_main.num_test_samples
+    args.test_batch_size = args_main.test_batch_size
+    output_file = path.join(args_main.save_dir, "stats_{}_{}.json".format(
+        args.no_use_several_test_samples, args.num_test_samples))
+    # if path.isfile(output_file):
+    #     print("{} already exists.".format(output_file))
+    #     return 
+    print("Evaluate {} for no_use_several_test_samples: {}".format(
+        args.save_dir, args.no_use_several_test_samples) + 
+        " num_test_samples: {} test_batch_size: {}".format(
+            args.num_test_samples, args.test_batch_size))
+    print("Output will be saved to {}".format(output_file))
+    # model
+    num_channels = get_num_channels(args.data_modalities)
+    model = initialize_model(args.model, 2, num_channels, 
+                             use_last_n_layers=args.use_last_n_layers,
+                             use_pretrained=not args.no_use_pretrained)
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    params = sum([np.prod(p.size()) for p in model_parameters])
+    print("Number of trainable params: {}".format(params))
+
+    best_model_fp = path.join(args.save_dir, "model_best.pt")
+    checkpoint = torch.load(best_model_fp, map_location="cpu")
+    state_dict = checkpoint['model_state_dict']
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        name = k[7:] # remove `module.`
+        new_state_dict[name] = v
+    # load params
+    model.load_state_dict(new_state_dict)
+    print("Loaded model from epoch {} with val loss {} and val acc {}".format(
+        checkpoint["epoch"], round(checkpoint["val_loss"], 4), 
+        round(checkpoint["val_acc"], 2)
+    ))
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    model.eval()
+
+    criterion = nn.CrossEntropyLoss()
+    criterion = criterion.to(device)
+
+    dataloaders = get_dataloaders(
+        args.batch_size, args.tile_size,
+        use_augment=not args.no_augmentation,
+        use_several_test_samples=not args.no_use_several_test_samples,
+        num_test_samples=args.num_test_samples,
+        test_batch_size=args.test_batch_size,
+        data_version=args.data_version,
+        data_order=args.data_modalities,
+        ddp=False
+    )
+    (_, dataloader_validation, dataloader_test, dataloader_test_rw,
+     dataloader_test_ug, _) = dataloaders
+    dataloader_tuples = [
+        (dataloader_validation, "val"),
+        (dataloader_test, "test"),
+        (dataloader_test_rw, "test_rw"),
+        (dataloader_test_ug, "test_ug")
+    ]
+    stats = {}
+    for dataloader, name in dataloader_tuples:
+        all_preds = []
+        all_gt = []
+        running_loss = 0.
+        running_num = 0.
+        with torch.no_grad():
+            for inputs, labels in dataloader:
+                inputs = inputs.float().cuda()
+                labels = labels.long().cuda()
+                if not args.no_use_several_test_samples:
+                    batch_size, num_samples, c, w, h = inputs.shape
+                    inputs = inputs.view(batch_size * num_samples, c, w, h)
+                else:
+                    batch_size = inputs.shape[0]
+                    num_samples = 1
+
+                prediction = model(inputs)
+
+                if not args.no_use_several_test_samples:
+                    labels_ = labels.unsqueeze(-1).repeat(
+                        1, num_samples).view(-1)
+                    loss = criterion(prediction, labels_)
+                else:
+                    loss = criterion(prediction, labels)
+                if not args.no_use_several_test_samples:
+                    prediction = torch.softmax(
+                        prediction.view(
+                            batch_size, num_samples, -1), -1).mean(1)
+                running_loss += loss.item() * batch_size
+                running_num += batch_size
+                all_preds.append(prediction.argmax(1).cpu())
+                all_gt.append(labels.cpu())
+            all_preds = torch.cat(all_preds).numpy()
+            all_gt = torch.cat(all_gt).numpy()
+            stats["{}_{}".format(name, "acc")] = balanced_accuracy_score(
+                all_gt, all_preds)
+            stats["{}_{}".format(name, "weighted_f1")] = f1_score(
+                all_gt, all_preds, average="weighted")
+            stats["{}_{}".format(name, "loss")] = running_loss / running_num
+    print(json.dumps(stats, indent=4))
+    with open(output_file, "w+") as f:
+        json.dump(stats, f, indent=4)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Argument for training.")
 
@@ -243,9 +412,9 @@ if __name__ == "__main__":
 
     # model
     parser.add_argument("--model", type=str,
-                        choices=["resnet18", "resnet50", "resnext",
-                                 "efficientnet_b2", "efficientnet_b7"],
-                        default="efficientnet_b2")
+                        choices=["resnet50", "resnet18", "wide_resnet50_2",
+                                 "efficientnet_v2_s", "efficientnet_v2_m"],
+                        default="resnet50")
 
     # data
     parser.add_argument("--batch_size", type=int, default=256,
@@ -264,6 +433,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_test_samples", default=32, type=int)
     parser.add_argument("--test_batch_size", default=8, type=int)
     parser.add_argument("--no_test_set_eval", action="store_true")
+    parser.add_argument("--use_last_n_layers", default=-1, type=int)
+    parser.add_argument("--no_use_pretrained", action="store_true")
 
     # log during training
     parser.add_argument("--log_interval", default=1, type=int,
@@ -288,8 +459,11 @@ if __name__ == "__main__":
     parser.add_argument("--local_rank", default=0, type=int,
                         help="Please ignore and do not set this argument.")
     parser.add_argument("--use_fp16", action="store_true")
+    parser.add_argument("--evaluate", action="store_true")
 
     args = parser.parse_args()
 
-    utils.print_args(args)
-    main(args)
+    if args.evaluate:
+        evaluate(args)
+    else:
+        main(args)
