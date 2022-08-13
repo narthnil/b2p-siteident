@@ -262,9 +262,7 @@ def evaluate(args_main):
     args.test_batch_size = args_main.test_batch_size
     output_file = path.join(args_main.save_dir, "stats_{}_{}.json".format(
         args.no_use_several_test_samples, args.num_test_samples))
-    # if path.isfile(output_file):
-    #     print("{} already exists.".format(output_file))
-    #     return 
+
     print("Evaluate {} for no_use_several_test_samples: {}".format(
         args.save_dir, args.no_use_several_test_samples) + 
         " num_test_samples: {} test_batch_size: {}".format(
@@ -319,6 +317,21 @@ def evaluate(args_main):
         (dataloader_test_rw, "test_rw"),
         (dataloader_test_ug, "test_ug")
     ]
+
+    if path.isfile(output_file):
+        with open(output_file) as f:
+            stats = json.load(f)
+        evaluate_model = False
+        for tp in dataloader_tuples:
+            for m in ["acc", "weighted_f1", "loss"]:
+                k = tp[1] + "_" + m
+                if k not in stats: 
+                    print("{} missing in stats.".format(k))
+                    evaluate_model = True
+        if not evaluate_model:
+            print("{} already exists and has all keys.".format(output_file))
+            return
+
     stats = {}
     for dataloader, name in dataloader_tuples:
         all_preds = []

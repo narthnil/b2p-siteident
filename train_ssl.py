@@ -34,54 +34,7 @@ TRAIN_LOG_FORMAT = (
     'Loss_u: {loss_u:.4f} | W: {w:.4f}')
 
 
-def main():
-    parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
-    # Optimization options
-    parser.add_argument('--epochs', default=300, type=int, metavar='N',
-                        help='number of total epochs to run')
-    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                        help='manual epoch number (useful on restarts)')
-    parser.add_argument('--batch-size', default=256, type=int, metavar='N',
-                        help='train batchsize')
-    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
-                        metavar='LR', help='initial learning rate')
-    # Checkpoints
-    parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                        help='path to latest checkpoint (default: none)')
-    # Miscs
-    parser.add_argument('--manualSeed', type=int, default=0,
-                        help='manual seed')
-    # Device options
-    parser.add_argument('--gpu', default='0', type=str,
-                        help='id(s) for CUDA_VISIBLE_DEVICES')
-    # Method options
-    parser.add_argument('--train-iteration', type=int, default=256,
-                        help='Number of iteration per epoch')
-    parser.add_argument('--out', default='results/ssl',
-                        help='Directory to output the result')
-    parser.add_argument('--alpha', default=0.75, type=float)
-    parser.add_argument('--lambda-u', default=5, type=float)
-    parser.add_argument('--T', default=0.5, type=float)
-    parser.add_argument('--ema-decay', default=0.75, type=float)
-    parser.add_argument("--tile_size", type=int,
-                        choices=[300, 600, 1200], default=1200)
-    # model
-    parser.add_argument("--model", type=str,
-                        choices=["resnet18", "resnet50", "resnext",
-                                 "efficientnet_b2", "efficientnet_b7"],
-                        default="efficientnet_b7")
-
-    parser.add_argument("--use_several_test_samples", action="store_true")
-    parser.add_argument("--num_test_samples", default=32, type=int)
-    parser.add_argument("--test_batch_size", default=32, type=int)
-    parser.add_argument("--data_version", default="v1", type=str)
-    parser.add_argument("--no_augmentation", action="store_true")
-    parser.add_argument("--data_modalities", nargs="+", type=str,
-                        default=["population", "osm_img", "elevation",
-                                 "slope", "roads", "waterways",
-                                 "admin_bounds_qgis"])
-
-    args = parser.parse_args()
+def main(args):
     state = {k: v for k, v in args._get_kwargs()}
 
     # Use CUDA
@@ -106,15 +59,17 @@ def main():
         data_order=args.data_modalities
     )
 
-    (labeled_trainloader, val_loader, _,
+    (labeled_trainloader, val_loader, _, _, _, 
      unlabeled_trainloader) = dataloaders
 
     # model
     num_channels = bridge_site.get_num_channels(args.data_modalities)
-    model = models.BridgeResnet(
-        model_name=args.model, lazy=False, num_channels=num_channels).cuda()
-    ema_model = models.BridgeResnet(
-        model_name=args.model, lazy=False, num_channels=num_channels).cuda()
+    model = models.initialize_mod_model(args.model, 2, num_channels, 
+                             use_last_n_layers=args.use_last_n_layers,
+                             use_pretrained=not args.no_use_pretrained).cuda()
+    ema_model = models.initialize_mod_model(args.model, 2, num_channels, 
+                             use_last_n_layers=args.use_last_n_layers,
+                             use_pretrained=not args.no_use_pretrained).cuda()
     for param in ema_model.parameters():
         param.detach_()
 
@@ -130,7 +85,7 @@ def main():
     start_epoch = 0
 
     columns = ['Epoch', 'Train Loss', 'Train Loss X', 'Train Loss U',
-               'Train Acc.', 'Valid Loss', 'Valid Acc.', 'Best Epoch',
+               'Train Acc.', 'Val Loss', 'Val Acc.', 'Best Epoch',
                'Best Acc.']
     logs = []
     best_acc = best_epoch = -1
@@ -150,7 +105,7 @@ def main():
             labeled_trainloader, ema_model, criterion, use_cuda,
             mode='Train Stats')
         val_loss, val_acc = validate(
-            val_loader, ema_model, criterion, use_cuda, mode='Valid Stats',
+            val_loader, ema_model, criterion, use_cuda, mode='Val Stats',
             use_several_test_samples=args.use_several_test_samples)
         # test_loss, test_acc = validate(
         #     test_loader, ema_model, criterion, use_cuda, mode='Test Stats ',
@@ -181,12 +136,19 @@ def main():
         }, is_best, args.out)
         print('Epoch: [{:d} | {:d}] LR: {:f} Total: {:.3f}s\n'.format(
             epoch + 1, args.epochs, state['lr'], time.time() - start))
+        if epoch - best_acc > 50:
+            print("Early stopping...")
+            break
     pd.DataFrame(logs, columns=columns).to_csv(
         path.join(args.out, "logs.csv"), index=False)
     args.finished = True
 
     with open(os.path.join(args.out, "opts.json"), "w+") as f:
         json.dump(vars(args), f, indent=4)
+
+
+def evaluate(model):
+    pass
 
 
 def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
@@ -279,7 +241,6 @@ def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
                               mixed_target[batch_size:],
                               epoch * len(labeled_trainloader) + batch_idx,
                               lambda_u)
-
         loss = Lx + w * Lu
 
         # record loss
@@ -441,4 +402,53 @@ def interleave(xy, batch):
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
+    # Optimization options
+    parser.add_argument('--epochs', default=300, type=int, metavar='N',
+                        help='number of total epochs to run')
+    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+                        help='manual epoch number (useful on restarts)')
+    parser.add_argument('--batch-size', default=256, type=int, metavar='N',
+                        help='train batchsize')
+    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
+                        metavar='LR', help='initial learning rate')
+    # Checkpoints
+    parser.add_argument('--resume', default='', type=str, metavar='PATH',
+                        help='path to latest checkpoint (default: none)')
+    # Miscs
+    parser.add_argument('--manualSeed', type=int, default=0,
+                        help='manual seed')
+    # Device options
+    parser.add_argument('--gpu', default='0', type=str,
+                        help='id(s) for CUDA_VISIBLE_DEVICES')
+    # Method options
+    parser.add_argument('--train-iteration', type=int, default=256,
+                        help='Number of iteration per epoch')
+    parser.add_argument('--out', default='experiments/ssl',
+                        help='Directory to output the result')
+    parser.add_argument('--alpha', default=0.75, type=float)
+    parser.add_argument('--lambda-u', default=5, type=float)
+    parser.add_argument('--T', default=0.5, type=float)
+    parser.add_argument('--ema-decay', default=0.75, type=float)
+    parser.add_argument("--tile_size", type=int,
+                        choices=[300, 600, 1200], default=1200)
+    # model
+    parser.add_argument("--model", type=str,
+                        choices=["resnet50", "resnet18", "wide_resnet50_2",
+                                 "efficientnet_v2_s", "efficientnet_v2_m"],
+                        default="resnet50")
+
+    parser.add_argument("--use_several_test_samples", action="store_true")
+    parser.add_argument("--num_test_samples", default=32, type=int)
+    parser.add_argument("--test_batch_size", default=32, type=int)
+    parser.add_argument("--data_version", default="v1", type=str)
+    parser.add_argument("--no_augmentation", action="store_true")
+    parser.add_argument("--use_last_n_layers", default=-1, type=int)
+    parser.add_argument("--data_modalities", nargs="+", type=str,
+                        default=["population", "osm_img", "elevation",
+                                 "slope", "roads", "waterways",
+                                 "admin_bounds_qgis"])
+    parser.add_argument("--no_use_pretrained", action="store_true")
+
+    args = parser.parse_args()
+    main(args)
