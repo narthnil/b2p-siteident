@@ -93,15 +93,6 @@ def print_confusion_matrix(tp, tn, fp, fn, name=""):
     print("{:04d} (FN) {:04d} (TN)".format(fn, tn))
 
 
-def fix_random_seeds(seed=31):
-    """
-    Fix random seeds.
-    """
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-
-
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.
