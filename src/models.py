@@ -11,7 +11,7 @@ class BridgeResnet(nn.Module):
         super().__init__()
         assert model_name in ["resnet18", "resnet50", "resnext",
                               "efficientnet_b2", "efficientnet_b7",
-                              "efficientnet_b4"], \
+                              "efficientnet_b4", "wide_resnet50_2"], \
             "Model {} not known.".format(model_name)
 
         if model_name == "resnet18":
@@ -26,6 +26,8 @@ class BridgeResnet(nn.Module):
             self.model = models.efficientnet_b4(pretrained=pretrained)
         elif model_name == "efficientnet_b7":
             self.model = models.efficientnet_b7(pretrained=pretrained)
+        elif model_name == "wide_resnet50_2":
+            self.model = models.wide_resnet50_2(pretrained=pretrained)
         else:
             raise NotImplementedError
         if lazy and not model_name.startswith("efficientnet"):
