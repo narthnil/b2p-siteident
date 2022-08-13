@@ -26,16 +26,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
-from torchvision import models, transforms
-from src import utils
-
-NUM_LAYERS = {
-    "resnet18": 52,
-    "resnet50": 126,
-    "wide_resnet50_2": 126,
-    "efficientnet_v2_s": 485,
-    "efficientnet_v2_m": 697,
-}
+from torchvision import transforms
+from src import utils, models
 
 INPUT_SIZE = {
     "v1_b2p_rgb_large_590_320_jpg": 32,
@@ -197,42 +189,7 @@ def test_best_model(model, criterion, dataloaders):
     return stats
 
 
-def initialize_model(model_name, num_classes, use_last_n_layers=1,
-                     use_pretrained=True):
-    # Initialize these variables which will be set in this if statement. Each
-    # of these variables is model specific
-    if use_pretrained:
-        if model_name.startswith("efficientnet") or model_name == "resnet18":
-            weights = "IMAGENET1K_V1"
-        else:
-            weights = "IMAGENET1K_V2"
-    else:
-        weights = None
-    model = getattr(models, model_name)(weights=weights)
-    set_parameter_requires_grad(model, model_name, use_last_n_layers)
-    if model_name.startswith("efficientnet"):
-        num_ftrs = model.classifier[1].in_features
-        model.classifier = nn.Sequential(
-            nn.Dropout(p=0.3, inplace=True),
-            nn.Linear(num_ftrs, num_classes))
-    else:
-        
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, num_classes)
-    return model
 
-
-def count_num_layers(m: nn.Module):
-    stack = list(m.children())
-    num_layers = 0
-    while stack:
-        next_elem = stack.pop(0)
-        children = list(next_elem.children())
-        if len(children) == 0:
-            num_layers += 1
-        else:
-            stack = children + stack
-    return num_layers
 
 
 def set_parameter_requires_grad(model, model_name, use_last_n_layers):
@@ -245,7 +202,8 @@ def set_parameter_requires_grad(model, model_name, use_last_n_layers):
         children = list(current_elem.children())
         if len(children) == 0:
             current_count += 1
-            if current_count < NUM_LAYERS[model_name] - use_last_n_layers + 1:
+            if current_count < models.NUM_LAYERS[
+                    model_name] - use_last_n_layers + 1:
                 for param in current_elem.parameters():
                     param.requires_grad = False
         else:
@@ -446,7 +404,7 @@ if __name__ == "__main__":
             json.dump(vars(args), f, indent=4)
 
         # Initialize the model for this run
-        model = initialize_model(args.model_name, args.num_classes,
+        model = models.initialize_rgb_model(args.model_name, args.num_classes,
                                 use_last_n_layers=args.use_last_n_layers,
                                 use_pretrained=not args.no_use_pretrained)
 
@@ -503,7 +461,7 @@ if __name__ == "__main__":
         args = Args(opts)
         print(args.model_name)
         # Initialize the model for this run
-        model = initialize_model(args.model_name, args.num_classes,
+        model = models.initialize_rgb_model(args.model_name, args.num_classes,
                                 use_last_n_layers=args.use_last_n_layers,
                                 use_pretrained=not args.no_use_pretrained)
 

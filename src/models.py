@@ -1,66 +1,104 @@
-import torch
 import torch.nn as nn
-import torchvision.models as models
+
+from torchvision import models
 
 
-class BridgeResnet(nn.Module):
+NUM_LAYERS = {
+    "resnet18": 52,
+    "resnet50": 126,
+    "wide_resnet50_2": 126,
+    "efficientnet_v2_s": 485,
+    "efficientnet_v2_m": 697,
+}
 
-    def __init__(self, model_name: str = "resnet18",
-                 pretrained: bool = True, lazy: bool = True,
-                 num_channels: int = 9) -> None:
-        super().__init__()
-        assert model_name in ["resnet18", "resnet50", "resnext",
-                              "efficientnet_b2", "efficientnet_b7",
-                              "efficientnet_b4", "wide_resnet50_2"], \
-            "Model {} not known.".format(model_name)
 
-        if model_name == "resnet18":
-            self.model = models.resnet18(pretrained=pretrained)
-        elif model_name == "resnet50":
-            self.model = models.resnet50(pretrained=pretrained)
-        elif model_name == "resnext":
-            self.model = models.resnext101_32x4d(pretrained=pretrained)
-        elif model_name == "efficientnet_b2":
-            self.model = models.efficientnet_b2(pretrained=pretrained)
-        elif model_name == "efficientnet_b4":
-            self.model = models.efficientnet_b4(pretrained=pretrained)
-        elif model_name == "efficientnet_b7":
-            self.model = models.efficientnet_b7(pretrained=pretrained)
-        elif model_name == "wide_resnet50_2":
-            self.model = models.wide_resnet50_2(pretrained=pretrained)
+def count_num_layers(m: nn.Module):
+    stack = list(m.children())
+    num_layers = 0
+    while stack:
+        next_elem = stack.pop(0)
+        children = list(next_elem.children())
+        if len(children) == 0:
+            num_layers += 1
         else:
-            raise NotImplementedError
-        if lazy and not model_name.startswith("efficientnet"):
-            self.model.conv1 = nn.LazyConv2d(
-                64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3),
-                bias=False)
-            self.model.fc = nn.Linear(self.model.fc.in_features, 2)
-        elif not lazy and not model_name.startswith("efficientnet"):
-            self.model.conv1 = nn.Conv2d(
-                num_channels, 64, kernel_size=(7, 7), stride=(2, 2),
-                padding=(3, 3), bias=False)
-            self.model.fc = nn.Linear(self.model.fc.in_features, 2)
-        elif not lazy and model_name == "efficientnet_b2":
-            self.model.features[0][0] = nn.Conv2d(
-                num_channels, 32, kernel_size=(3, 3), stride=(2, 2),
-                padding=(1, 1), bias=False)
-            self.model.classifier[1] = nn.Linear(
-                self.model.classifier[1].in_features, 2)
-        elif not lazy and model_name == "efficientnet_b4":
-            self.model.features[0][0] = nn.Conv2d(
-                num_channels, 48, kernel_size=(3, 3), stride=(2, 2),
-                padding=(1, 1), bias=False)
-            self.model.classifier[1] = nn.Linear(
-                self.model.classifier[1].in_features, 2)
-        elif not lazy and model_name == "efficientnet_b7":
-            self.model.features[0][0] = nn.Conv2d(
-                num_channels, 64, kernel_size=(3, 3), stride=(2, 2),
-                padding=(1, 1), bias=False)
-            self.model.classifier[1] = nn.Linear(
-                self.model.classifier[1].in_features, 2)
-        else:
-            raise NotImplementedError
+            stack = children + stack
+    return num_layers
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        output = self.model(input)
-        return output
+
+def set_parameter_requires_grad(model, model_name, use_last_n_layers):
+    if use_last_n_layers == -1:
+        return
+    current_count = 0
+    stack = list(model.children())
+    while stack:
+        current_elem = stack.pop(0)
+        children = list(current_elem.children())
+        if len(children) == 0:
+            current_count += 1
+            if current_count < NUM_LAYERS[model_name] - use_last_n_layers + 1:
+                for param in current_elem.parameters():
+                    param.requires_grad = False
+        else:
+            stack = children + stack
+
+
+def initialize_mod_model(model_name, num_classes, num_channels, 
+                         use_last_n_layers=-1, use_pretrained=True):
+    # Initialize these variables which will be set in this if statement. Each
+    # of these variables is model specific
+    if use_pretrained:
+        if model_name.startswith("efficientnet") or model_name == "resnet18":
+            weights = "IMAGENET1K_V1"
+        else:
+            weights = "IMAGENET1K_V2"
+    else:
+        weights = None
+    model = getattr(models, model_name)(weights=weights)
+    set_parameter_requires_grad(model, model_name, use_last_n_layers)
+    if model_name.startswith("efficientnet"):
+        model.features[0][0] = nn.Conv2d(
+                num_channels, model.features[0][0].out_channels, 
+                kernel_size=model.features[0][0].kernel_size, 
+                stride=model.features[0][0].stride,
+                padding=model.features[0][0].padding, 
+                bias=model.features[0][0].bias)
+        for param in model.features.parameters():
+            param.requires_grad = True
+        num_ftrs = model.classifier[1].in_features
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.3, inplace=True),
+            nn.Linear(num_ftrs, num_classes))
+    else:
+        model.conv1 = nn.Conv2d(
+            num_channels, model.conv1.out_channels, 
+            kernel_size=model.conv1.kernel_size, 
+            stride=model.conv1.stride)
+        for param in model.conv1.parameters():
+            param.requires_grad = True
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, num_classes)
+    return model
+
+
+def initialize_rgb_model(model_name, num_classes, use_last_n_layers=1,
+                         use_pretrained=True):
+    # Initialize these variables which will be set in this if statement. Each
+    # of these variables is model specific
+    if use_pretrained:
+        if model_name.startswith("efficientnet") or model_name == "resnet18":
+            weights = "IMAGENET1K_V1"
+        else:
+            weights = "IMAGENET1K_V2"
+    else:
+        weights = None
+    model = getattr(models, model_name)(weights=weights)
+    set_parameter_requires_grad(model, model_name, use_last_n_layers)
+    if model_name.startswith("efficientnet"):
+        num_ftrs = model.classifier[1].in_features
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.3, inplace=True),
+            nn.Linear(num_ftrs, num_classes))
+    else:
+        num_ftrs = model.fc.in_features
+        model.fc = nn.Linear(num_ftrs, num_classes)
+    return model

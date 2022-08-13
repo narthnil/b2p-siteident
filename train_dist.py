@@ -1,5 +1,4 @@
 import argparse
-from genericpath import isfile
 import json
 import os
 import os.path as path
@@ -13,52 +12,12 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 
 from torch.utils.data import DataLoader
-from torchvision import models
 
-from train_baseline import set_parameter_requires_grad, Args
-from src import utils
+from train_baseline import Args
+from src import utils, models
 from src.data.bridge_site import get_num_channels, get_dataloaders
 
 from sklearn.metrics import balanced_accuracy_score, f1_score
-
-
-def initialize_model(model_name, num_classes, num_channels, 
-                     use_last_n_layers=-1, use_pretrained=True):
-    # Initialize these variables which will be set in this if statement. Each
-    # of these variables is model specific
-    if use_pretrained:
-        if model_name.startswith("efficientnet") or model_name == "resnet18":
-            weights = "IMAGENET1K_V1"
-        else:
-            weights = "IMAGENET1K_V2"
-    else:
-        weights = None
-    model = getattr(models, model_name)(weights=weights)
-    set_parameter_requires_grad(model, model_name, use_last_n_layers)
-    if model_name.startswith("efficientnet"):
-        model.features[0][0] = nn.Conv2d(
-                num_channels, model.features[0][0].out_channels, 
-                kernel_size=model.features[0][0].kernel_size, 
-                stride=model.features[0][0].stride,
-                padding=model.features[0][0].padding, 
-                bias=model.features[0][0].bias)
-        for param in model.features.parameters():
-            param.requires_grad = True
-        num_ftrs = model.classifier[1].in_features
-        model.classifier = nn.Sequential(
-            nn.Dropout(p=0.3, inplace=True),
-            nn.Linear(num_ftrs, num_classes))
-    else:
-        model.conv1 = nn.Conv2d(
-            num_channels, model.conv1.out_channels, 
-            kernel_size=model.conv1.kernel_size, 
-            stride=model.conv1.stride)
-        for param in model.conv1.parameters():
-            param.requires_grad = True
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, num_classes)
-    return model
-
 
 def train_for_an_epoch(model: nn.Module, criterion: nn.modules.loss._Loss,
                        dataloader: DataLoader, optimizer, epoch: int,
@@ -230,7 +189,7 @@ def main(args):
 
     # model
     num_channels = get_num_channels(args.data_modalities)
-    model = initialize_model(args.model, 2, num_channels, 
+    model = models.initialize_mod_model(args.model, 2, num_channels, 
                              use_last_n_layers=args.use_last_n_layers,
                              use_pretrained=not args.no_use_pretrained)
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -313,7 +272,7 @@ def evaluate(args_main):
     print("Output will be saved to {}".format(output_file))
     # model
     num_channels = get_num_channels(args.data_modalities)
-    model = initialize_model(args.model, 2, num_channels, 
+    model = models.initialize_mod_model(args.model, 2, num_channels, 
                              use_last_n_layers=args.use_last_n_layers,
                              use_pretrained=not args.no_use_pretrained)
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
