@@ -21,9 +21,12 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from src.utils import AverageMeter, accuracy
+from sklearn.metrics import balanced_accuracy_score, f1_score
 
 from src import models, utils
 from src.data import bridge_site
+
+from train_baseline import Args
 
 VAL_LOG_FORMAT = (
     '{name} ({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | '
@@ -136,7 +139,7 @@ def main(args):
         }, is_best, args.out)
         print('Epoch: [{:d} | {:d}] LR: {:f} Total: {:.3f}s\n'.format(
             epoch + 1, args.epochs, state['lr'], time.time() - start))
-        if epoch - best_acc > 50:
+        if epoch - best_acc > 50 and not args.no_early_stopping:
             print("Early stopping...")
             break
     pd.DataFrame(logs, columns=columns).to_csv(
@@ -145,10 +148,6 @@ def main(args):
 
     with open(os.path.join(args.out, "opts.json"), "w+") as f:
         json.dump(vars(args), f, indent=4)
-
-
-def evaluate(model):
-    pass
 
 
 def train(labeled_trainloader, unlabeled_trainloader, model, optimizer,
@@ -401,6 +400,130 @@ def interleave(xy, batch):
     return [torch.cat(v, dim=0) for v in xy]
 
 
+def evaluate(args_main):
+    opts_fp = path.join(args_main.out, "opts.json")
+    if not path.isfile(opts_fp):
+        print("{} is not finished.".format(args_main.out))
+        return
+    with open(path.join(args_main.out, "opts.json")) as f:
+        opts = json.load(f)
+    args = Args(opts)
+    
+    args.use_several_test_samples = args_main.use_several_test_samples
+    args.num_test_samples = args_main.num_test_samples
+    args.test_batch_size = args_main.test_batch_size
+    if args_main.use_last_checkpoint:
+        model_fp = path.join(args.out, "checkpoint.pth.tar")
+    else:
+        model_fp = path.join(args.out, "model_best.pth.tar")
+    if not path.isfile(model_fp):
+        print("model_best.pth.tar does not exists.")
+        return
+    checkpoint = torch.load(model_fp, map_location="cpu")
+    best_epoch = checkpoint["epoch"]
+
+    output_file = path.join(args_main.out, "stats_{}_{}_{}.json".format(
+        "last" if args_main.use_last_checkpoint else "best",
+        args.use_several_test_samples, args.num_test_samples))
+    
+    if path.isfile(output_file):
+        with open(output_file) as f:
+            stats = json.load(f)
+        if args_main.use_last_checkpoint:
+            if best_epoch - stats["epoch"] < 5 and best_epoch != 200:
+                print("Only calculate last epoch every 5 epochs.")
+                return
+        else:
+            if stats["epoch"] == best_epoch and not args_main.overwrite:
+                print("Stats for epoch {} already exists.".format(best_epoch))
+                return
+    
+    print("Evaluate {} for use_several_test_samples: {}".format(
+        args.out, args.use_several_test_samples) + 
+        " num_test_samples: {} test_batch_size: {}".format(
+            args.num_test_samples, args.test_batch_size))
+    print("Output will be saved to {}".format(output_file))
+
+    use_cuda = torch.cuda.is_available()
+    num_channels = bridge_site.get_num_channels(args.data_modalities)
+    ema_model = models.initialize_mod_model(
+        args.model, 2, num_channels, use_last_n_layers=args.use_last_n_layers,
+        use_pretrained=not args.no_use_pretrained)
+    if use_cuda:
+        ema_model = ema_model.cuda()
+    ema_model.eval()
+    
+    ema_model.load_state_dict(checkpoint['ema_state_dict'])
+    print(
+        "Loaded model from epoch {epoch} ".format(epoch=checkpoint["epoch"]) +
+        "with validation accuracy {acc:.2f}".format(
+            acc=checkpoint["best_acc"]))
+    
+    dataloaders = bridge_site.get_dataloaders(
+        args.batch_size, args.tile_size,
+        use_augment=not args.no_augmentation,
+        use_several_test_samples=args.use_several_test_samples,
+        num_test_samples=args.num_test_samples,
+        test_batch_size=args.test_batch_size,
+        data_version=args.data_version,
+        data_order=args.data_modalities
+    )
+
+    (_, val_loader, test_loader, test_rw_loader, test_ug_loader, 
+     _) = dataloaders
+
+    loaders = [("val", val_loader), ("test", test_loader), 
+               ("test_rw", test_rw_loader), ("test_ug", test_ug_loader)]
+    
+    criterion = nn.CrossEntropyLoss(reduction="none")
+    stats = {"epoch": best_epoch}
+    for name, dataloader in loaders:
+        all_preds = []
+        all_gt = []
+        running_loss = 0.
+        running_num = 0.
+        with torch.no_grad():
+            for inputs, targets in dataloader:
+                # measure data loading time
+                inputs = inputs.float()
+                batch_size = inputs.shape[0]
+                if use_cuda:
+                    inputs, targets = inputs.cuda(), targets.cuda()
+                if args.use_several_test_samples:
+                    batch_size, num_samples, c, w, h = inputs.shape
+                    inputs_ = inputs.view(batch_size * num_samples, c, w, h)
+                    targets_ = targets.view(-1, 1).repeat(1, num_samples).view(
+                        batch_size * num_samples)
+                else:
+                    inputs_ = inputs
+                    targets_ = targets
+                # compute output
+                outputs = ema_model(inputs_)
+                loss = criterion(outputs, targets_)
+                # measure accuracy and record loss
+                if args.use_several_test_samples:
+                    outputs = torch.softmax(
+                        outputs.view(batch_size, num_samples, -1), -1).mean(1)
+                    loss = loss.view(batch_size, num_samples).mean(1).mean()
+                else:
+                    loss = loss.mean()
+                running_loss += loss.item() * batch_size
+                running_num += batch_size
+                all_preds.append(outputs.argmax(1).cpu())
+                all_gt.append(targets.cpu())
+            all_preds = torch.cat(all_preds).numpy()
+            all_gt = torch.cat(all_gt).numpy()
+            stats["{}_{}".format(name, "acc")] = balanced_accuracy_score(
+                all_gt, all_preds)
+            stats["{}_{}".format(name, "weighted_f1")] = f1_score(
+                all_gt, all_preds, average="weighted")
+            stats["{}_{}".format(name, "loss")] = running_loss / running_num
+    print(json.dumps(stats, indent=4))
+    with open(output_file, "w+") as f:
+        json.dump(stats, f, indent=4)
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch MixMatch Training')
     # Optimization options
@@ -440,7 +563,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--use_several_test_samples", action="store_true")
     parser.add_argument("--num_test_samples", default=32, type=int)
-    parser.add_argument("--test_batch_size", default=32, type=int)
+    parser.add_argument("--test_batch_size", default=6, type=int)
     parser.add_argument("--data_version", default="v1", type=str)
     parser.add_argument("--no_augmentation", action="store_true")
     parser.add_argument("--use_last_n_layers", default=-1, type=int)
@@ -449,6 +572,14 @@ if __name__ == '__main__':
                                  "slope", "roads", "waterways",
                                  "admin_bounds_qgis"])
     parser.add_argument("--no_use_pretrained", action="store_true")
+    parser.add_argument("--no_early_stopping", action="store_true")
+
+    parser.add_argument("--evaluate", action="store_true")
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--use_last_checkpoint", action="store_true")
 
     args = parser.parse_args()
-    main(args)
+    if args.evaluate:
+        evaluate(args)
+    else:
+        main(args)

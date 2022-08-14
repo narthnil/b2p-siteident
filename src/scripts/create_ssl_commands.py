@@ -7,7 +7,8 @@ if __name__ == "__main__":
         "ema-decay": [0.5, 0.75, 0.9],
         "T": [0.5, 0.75],
         "alpha": [0.25, 0.5, 0.75],
-        "tile_size": [300, 1200],
+        # "tile_size": [300, 1200],
+        "tile_size": [300],
         "model": ["resnet18"],
     }
     gpu_allocation = {}
