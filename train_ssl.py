@@ -139,7 +139,7 @@ def main(args):
         }, is_best, args.out)
         print('Epoch: [{:d} | {:d}] LR: {:f} Total: {:.3f}s\n'.format(
             epoch + 1, args.epochs, state['lr'], time.time() - start))
-        if epoch - best_acc > 50 and not args.no_early_stopping:
+        if epoch - best_acc > 50 and epoch > 150 and not args.no_early_stopping:
             print("Early stopping...")
             break
     pd.DataFrame(logs, columns=columns).to_csv(
@@ -417,7 +417,7 @@ def evaluate(args_main):
     else:
         model_fp = path.join(args.out, "model_best.pth.tar")
     if not path.isfile(model_fp):
-        print("model_best.pth.tar does not exists.")
+        print("{} does not exists.".format(model_fp))
         return
     checkpoint = torch.load(model_fp, map_location="cpu")
     best_epoch = checkpoint["epoch"]
