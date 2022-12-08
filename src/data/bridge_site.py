@@ -806,7 +806,8 @@ def get_dataloaders(batch_size: int, tile_size: int,
                     use_augment: bool = True,
                     use_rnd_center_point: bool = True,
                     use_several_test_samples: bool = False,
-                    ddp: bool = False) -> Tuple[
+                    ddp: bool = False,
+                    drop_last: bool = True) -> Tuple[
         DataLoader, DataLoader]:
     """Returns dataloaders for training and evaluation.
 
@@ -833,8 +834,10 @@ def get_dataloaders(batch_size: int, tile_size: int,
                  data or not. Default: True.
             use_rnd_center_point (bool, optional): Whether to use random tile
                 center points or not. Default: True.
-            use_several_test_samples (bool, optional). Whether to use several
+            use_several_test_samples (bool, optional): Whether to use several
                 samples for testing or not. Default: False.
+            drop_last (bool, optional): Whether the train loaders should drop
+                the last batch that is smaller than the batch size.
 
         Returns:
             dataloader_train (DataLoader): Train dataloader.
@@ -899,7 +902,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
     te_batch_size = test_batch_size if use_several_test_samples else batch_size
     dataloader_train = DataLoader(
         tr_dataset, sampler=sampler_train, batch_size=batch_size,
-        drop_last=True, **common_loader_kwargs,
+        drop_last=drop_last, **common_loader_kwargs,
         worker_init_fn=utils.worker_init_fn,)
     dataloader_validation = DataLoader(
         va_te_dataset, sampler=sampler_validation, batch_size=te_batch_size,
@@ -922,7 +925,7 @@ def get_dataloaders(batch_size: int, tile_size: int,
         use_augment=use_augment, use_rnd_center_point=use_rnd_center_point
     )
     dataloader_nolab = DataLoader(
-        uganda_dataset, batch_size=batch_size, drop_last=True,
+        uganda_dataset, batch_size=batch_size, drop_last=drop_last,
         **common_loader_kwargs
     )
 
